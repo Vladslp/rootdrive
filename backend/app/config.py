@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     max_upload_size_mb: int = 2048
     session_hours: int = 24
+    max_preview_pixels: int = 50000000
+    preview_cache_size_mb: int = 512
 
     def prepare(self) -> None:
         self.storage_path = (ROOT / self.storage_path).resolve()

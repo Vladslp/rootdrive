@@ -8,6 +8,7 @@ from sqlalchemy import select
 from ..database import Share, TrashItem
 from ..schemas import FileEntry, FileListing, FolderInput, MoveInput, PathInput, RenameInput, StorageStats, TrashInput
 from ..services.security import require_access
+from ..services.metadata import image_metadata
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
 
@@ -86,7 +87,14 @@ def download_file(request: Request, path: str):
 
 @router.get('/files/preview')
 def preview_file(request: Request, path: str):
+    if Path(path).suffix.lower() in {'.heic', '.heif', '.avif'}:
+        return request.app.state.previews.response(path)
     return request.app.state.fs.response(path, preview=True)
+
+
+@router.get('/files/thumbnail')
+def thumbnail_file(request: Request, path: str):
+    return request.app.state.previews.response(path, thumbnail=True)
 
 
 def relocate(fs, db, source, destination):
@@ -200,3 +208,8 @@ def remove_trash(body: TrashInput, request: Request):
 @router.get('/storage/stats', response_model=StorageStats)
 def storage_stats(request: Request):
     return request.app.state.fs.stats()
+
+
+@router.get('/files/metadata')
+def file_metadata(request: Request, path: str):
+    return image_metadata(request.app.state.fs, path)

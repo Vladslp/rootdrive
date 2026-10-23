@@ -55,6 +55,14 @@ export function Art({
 }
 export function kindOf(entry: Entry) {
   if (entry.type === "folder") {
+    const colors: Record<string, string> = {
+      photos: "mint",
+      documents: "folder",
+      videos: "lavender",
+      audio: "yellow",
+    };
+    if (colors[entry.name.toLowerCase()])
+      return colors[entry.name.toLowerCase()];
     const index = [...entry.name].reduce((a, b) => a + b.charCodeAt(0), 0) % 4;
     return ["folder", "lavender", "yellow", "mint"][index];
   }

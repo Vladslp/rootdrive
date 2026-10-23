@@ -14,11 +14,14 @@ Created as a university Python semester project. The implementation demonstrates
 - Restore deleted items or permanently remove individual trash items.
 - Case-insensitive filename search, optional recursive search and pagination.
 - Sort by name, modification date, size or type.
-- JPEG, PNG, WebP, GIF and PDF previews.
+- JPEG, PNG, WebP, GIF, HEIC, HEIF, AVIF and PDF previews.
+- Cached photo thumbnails and file properties with expandable camera/lens EXIF metadata.
 - Device capacity, free space, disk usage and RootDrive file totals.
 - Optional login, multiple accounts, administrator-created users and logout.
 - Optional expiring public download links and link revocation.
 - Original illustrated icons, a RootDrive application mark and mobile navigation.
+
+Finder `.DS_Store` metadata is hidden from file listings and file totals.
 
 Nothing is uploaded to a third-party service. Runtime does not load fonts, scripts or images from a CDN. The initial workspace is empty; no example files are silently installed.
 
@@ -49,6 +52,10 @@ python run.py
 Open <http://127.0.0.1:8000>. API documentation is at <http://127.0.0.1:8000/docs>.
 
 `requirements.txt` declares the supported dependency ranges. `backend/requirements.lock.txt` captures the exact Python environment used for verification; use it with Python 3.12 for the closest reproduction. `frontend/package-lock.json` is the npm lockfile; use `npm --prefix frontend ci` for repeatable frontend installs.
+
+## Stop the server
+
+For a foreground `python run.py` process, press **Ctrl+C** in its terminal. For a background process, find the listening process with `lsof -nP -iTCP:8000 -sTCP:LISTEN`, then send `kill PID` to that RootDrive process. Replace `8000` if you changed the port. For a systemd deployment, use `sudo systemctl stop rootdrive`.
 
 ## Development
 
@@ -115,6 +122,8 @@ Copy `.env.example` to `.env`. Relative paths are resolved from the project dire
 | `COOKIE_SECURE` | `false` | Restrict session cookies to HTTPS when true |
 | `MAX_UPLOAD_SIZE_MB` | `2048` | Maximum size of each file |
 | `SESSION_HOURS` | `24` | Session duration |
+| `MAX_PREVIEW_PIXELS` | `50000000` | Maximum decoded photo size for thumbnails/previews |
+| `PREVIEW_CACHE_SIZE_MB` | `512` | Derived JPEG preview cache limit |
 
 Storage must not contain application code, the database, `.env` or the internal directories. Keep `STORAGE_PATH` and `INTERNAL_PATH` on the **same filesystem** for rename-based trash operations. For an external disk, use sibling paths such as `/mnt/drive/files` and `/mnt/drive/rootdrive-internal`. The database can remain on the host disk.
 
@@ -143,7 +152,7 @@ python run.py create-admin --username admin
 
 Then set `AUTH_ENABLED=true` and restart. Passwords must contain at least ten characters. Passwords are hashed with Argon2id. The CLI does not accept passwords as command-line arguments.
 
-Administrators can create other accounts through `POST /api/auth/users` in the API. There is no open registration and no account-management screen. All signed-in users access **one shared workspace**. They do not have private directories. They can modify the same files and revoke workspace shares.
+Administrators can list users and create member or administrator accounts in Settings → Users, or through `GET /api/auth/users` and `POST /api/auth/users`. There is no open registration. When authentication is off, Settings shows instructions for creating the first administrator through the CLI and enabling authentication. All signed-in users access **one shared workspace**. They do not have private directories. They can modify the same files and revoke workspace shares.
 
 Sessions use random tokens in HttpOnly, SameSite=Strict cookies; only token hashes are stored in SQLite. The frontend keeps the CSRF token in memory and includes it on mutations. Session tokens are never stored in localStorage. Expired sessions are cleaned up on login. Login attempts are limited per client address in memory; a server restart resets that limit.
 
@@ -163,6 +172,14 @@ A crash or power failure can leave partial staging files or an unfinished metada
 
 Storage totals are scanned with streaming directory iteration and cached for 30 seconds. API file mutations invalidate the cache. RootDrive file size excludes trash; disk usage includes the OS, other applications, staging and trash.
 
+## Photo previews and EXIF
+
+Photo cards load lazy 640-pixel JPEG thumbnails. HEIC/HEIF and AVIF previews are converted to JPEG with a maximum 1920-pixel edge so browsers can display them. Downloads always return the original file. Pillow and pillow-heif run locally, with one conversion at a time, and respect the pixel limit. The first preview can take longer on slower hardware. Supported-platform wheels bundle the HEIF decoder; source installs may require libheif development packages.
+
+Derived files live in `INTERNAL_PATH/previews`, outside browsable storage. Cache keys include the source path, modification time, change time and size. The oldest derived files are removed when the configured cache limit is exceeded. Original files and their EXIF are never changed.
+
+Properties includes a collapsible EXIF section with available camera make/model, lens, ISO, exposure, aperture, focal length, capture time, software and other selected fields. Dimensions and values are read from the original; absent metadata is not invented. Public links still share the original file, including whatever metadata that original contains.
+
 ## Python architecture
 
 ```text
@@ -179,6 +196,8 @@ backend/app/
   services/
     filesystem.py       Path validation, listing, streaming downloads and statistics
     security.py         Argon2 verification, session lookup and CSRF enforcement
+    previews.py         Bounded photo conversion and derived thumbnail cache
+    metadata.py         Read-only EXIF extraction and display formatting
 backend/tests/          Isolated API integration tests
 frontend/src/           React, TypeScript, local API client and illustrated UI
 frontend/public/assets/ Original locally hosted image assets
@@ -205,6 +224,8 @@ All private endpoints require a session when authentication is enabled. State-ch
 | POST | `/api/files/upload?path=...` | Multipart `files` upload |
 | GET | `/api/files/download?path=...` | Attachment download |
 | GET | `/api/files/preview?path=...` | Supported inline preview |
+| GET | `/api/files/thumbnail?path=...` | Cached JPEG photo thumbnail |
+| GET | `/api/files/metadata?path=...` | Image dimensions and camera/lens EXIF |
 | POST | `/api/folders` | Create folder with `path`, `name` |
 | PATCH | `/api/files/rename` | Rename with `path`, `name` |
 | POST | `/api/files/move` | Move with `path`, `destination` |
@@ -216,7 +237,7 @@ All private endpoints require a session when authentication is enabled. State-ch
 | GET | `/api/auth/me` | Account and feature flags |
 | POST | `/api/auth/login` | Login with `username`, `password` |
 | POST | `/api/auth/logout` | Revoke current session |
-| POST | `/api/auth/users` | Administrator creates account |
+| GET, POST | `/api/auth/users` | Administrator lists/creates accounts |
 | GET, POST | `/api/shares` | List/create shares |
 | DELETE | `/api/shares/{id}` | Revoke share |
 | GET | `/api/public/{token}` | Anonymous shared-file download |
@@ -250,11 +271,11 @@ Install a supported Node.js version to build locally, or copy the project and a 
 - One server worker. Locks do not coordinate separate processes.
 - Designed for a trusted LAN with server-owned storage. Do not let untrusted local users mutate storage concurrently. Final download opens reject symlinks, but parent-path validation and mutations are not fully descriptor-relative; hostile external filesystem changes can create races.
 - No resumable uploads, folder uploads, bulk selection actions or folder ZIP downloads.
-- No video/audio playback, document conversion, thumbnail processing or OCR. Uploaded images and PDFs preview directly; other files download.
+- No video/audio playback, office-document conversion or OCR. Native image formats and PDFs preview directly; HEIC/HEIF and AVIF have derived JPEG previews.
 - Downloads stream without implementing HTTP byte-range requests. Large PDF behavior depends on the browser; download is always available.
 - Directory scanning, recursive search and initial storage stats can take time on very large collections. There is no background indexer.
-- Type filters affect the currently loaded page. The move picker shows the first 200 entries in a folder, with folders sorted first.
-- Account creation is CLI/API-based. Settings displays configuration; it does not edit server environment variables.
+- The move picker shows the first 200 entries in a folder, with folders sorted first.
+- The first administrator is created through the CLI. Further accounts are managed in Settings by administrators. Settings does not edit server environment variables.
 - No full activity history, synchronization client, versioning or automated backup.
 - No antivirus scanning or content sanitization. Downloads are attachments; inline previews are limited to supported image formats and PDFs.
 - Interrupted operations after a crash need administrator inspection. SQLite and filesystem changes are not power-loss atomic.

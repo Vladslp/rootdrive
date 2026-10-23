@@ -57,7 +57,7 @@ class Filesystem:
     def walk(self, directory: Path, recursive: bool):
         with os.scandir(directory) as entries:
             for item in entries:
-                if item.is_symlink():
+                if item.name == '.DS_Store' or item.is_symlink():
                     continue
                 if not item.is_dir(follow_symlinks=False) and not item.is_file(follow_symlinks=False):
                     continue

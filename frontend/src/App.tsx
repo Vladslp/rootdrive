@@ -22,6 +22,7 @@ import {
   FolderClosed,
   FolderPlus,
   HardDrive,
+  Info,
   Image,
   LayoutGrid,
   Link2,
@@ -54,10 +55,20 @@ import {
   type Stats,
 } from "./services/api";
 import { Art, kindOf } from "./components/Art";
+import { FileArtwork, isPhoto } from "./components/FileArtwork";
+import { ImageDetails } from "./components/ImageDetails";
+import { UsersSettings } from "./components/UsersSettings";
 
 type View = "files" | "shares" | "trash" | "storage" | "settings";
 type Dialog = {
-  kind: "folder" | "rename" | "delete" | "move" | "share" | "permanent";
+  kind:
+    | "folder"
+    | "rename"
+    | "delete"
+    | "move"
+    | "share"
+    | "permanent"
+    | "properties";
   entry?: Entry;
 };
 const date = (value: number) =>
@@ -153,7 +164,6 @@ export default function App() {
   const [direction, setDirection] = useState("asc");
   const [offset, setOffset] = useState(0);
   const [layout, setLayout] = useState<"grid" | "list">("grid");
-  const [filter, setFilter] = useState("all");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -273,7 +283,6 @@ export default function App() {
     setSearch("");
     setQuery("");
     setOffset(0);
-    setFilter("all");
     setSelected(null);
   };
   const changeView = (next: View) => {
@@ -282,7 +291,6 @@ export default function App() {
     setOffset(0);
     setSearch("");
     setSelected(null);
-    setFilter("all");
   };
   const openDialog = (kind: Dialog["kind"], entry?: Entry) => {
     setMenu(null);
@@ -382,7 +390,9 @@ export default function App() {
   const openEntry = (entry: Entry) => {
     if (entry.type === "folder") navigate(entry.path);
     else if (
-      /^(image\/(jpeg|png|webp|gif)|application\/pdf)$/.test(entry.mime || "")
+      /^(image\/(jpeg|png|webp|gif|heic|heif|avif)|application\/pdf)$/.test(
+        entry.mime || "",
+      )
     )
       setPreview(entry);
     else window.location.assign(fileURL(entry));
@@ -494,13 +504,7 @@ export default function App() {
     storage: "Storage",
     settings: "Settings",
   }[view];
-  const entries = listing.items.filter(
-    (entry) =>
-      filter === "all" ||
-      kindOf(entry) === filter ||
-      (filter === "documents" &&
-        ["pdf", "sheets", "slides", "code"].includes(kindOf(entry))),
-  );
+  const entries = listing.items;
   const folders = entries.filter((entry) => entry.type === "folder");
   const documents = entries.filter((entry) => entry.type !== "folder");
   const canUpload = view === "files";
@@ -534,6 +538,10 @@ export default function App() {
       <button role="menuitem" onClick={() => openDialog("move", entry)}>
         <MoveRight size={16} />
         Move to…
+      </button>
+      <button role="menuitem" onClick={() => openDialog("properties", entry)}>
+        <Info size={16} />
+        Properties
       </button>
       {account?.shares_enabled && entry.type === "file" && (
         <button role="menuitem" onClick={() => openDialog("share", entry)}>
@@ -575,7 +583,7 @@ export default function App() {
           onClick={() => view === "files" && openEntry(entry)}
           aria-label={"Open " + entry.name}
         >
-          <Art kind={kindOf(entry)} />
+          <FileArtwork entry={entry} disabled={view !== "files"} />
         </button>
         {view === "files" && (
           <div className="card-menu">
@@ -724,14 +732,6 @@ export default function App() {
               View storage <ArrowRight size={14} />
             </button>
           </div>
-          <div className="server-status">
-            <span className="status-dot" />
-            <div>
-              <strong>Your personal cloud</strong>
-              <span>Hosted by you. Always yours.</span>
-            </div>
-            <ShieldCheck size={18} />
-          </div>
           {account?.user && (
             <button className="logout" onClick={logout}>
               <LogOut size={16} />
@@ -769,10 +769,6 @@ export default function App() {
             )}
           </div>
           <div className="topbar-right">
-            <span className="connection">
-              <span className="status-dot" />
-              Local workspace
-            </span>
             <button
               className="icon-button help-button"
               aria-label="About RootDrive"
@@ -790,25 +786,12 @@ export default function App() {
           </div>
         </header>
         <main className="content">
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">YOUR PERSONAL CLOUD</div>
-              <h1>
-                {title}
-                <span className="heading-dot">.</span>
-              </h1>
-              <p>
-                {view === "files"
-                  ? "A home for everything that matters."
-                  : view === "trash"
-                    ? "A second chance for your files."
-                    : view === "shares"
-                      ? "A little sharing goes a long way."
-                      : view === "storage"
-                        ? "Know your space."
-                        : "Make yourself at home."}
-              </p>
-            </div>
+          <div
+            className={
+              "page-heading " + (canUpload ? "files-page-heading" : "")
+            }
+          >
+            {view !== "files" && <h1>{title}</h1>}
             {canUpload && (
               <div className="page-actions">
                 <button
@@ -832,64 +815,32 @@ export default function App() {
             )}
           </div>
           {view === "files" && (
-            <>
-              <section className="welcome-banner">
-                <div>
-                  <span className="banner-label">
-                    <span className="tiny-spark">✦</span> YOUR FILES, YOUR RULES
-                  </span>
-                  <h2>
-                    A little space.
-                    <br />
-                    For everything.
-                  </h2>
-                  <p>All your files. One place. Entirely yours.</p>
-                  <button onClick={() => input.current?.click()}>
-                    Drop something good <ArrowRight size={16} />
-                  </button>
-                </div>
-                <Art kind="cloud" className="banner-art" />
-                <div className="banner-orbit orbit-one" />
-                <div className="banner-orbit orbit-two" />
-                <span className="banner-star star-one">✦</span>
-                <span className="banner-star star-two">✧</span>
-              </section>
-              <section
-                className="category-grid"
-                aria-label="Filter by file type"
-              >
-                {[
-                  { id: "images", label: "Photos", color: "green" },
-                  { id: "documents", label: "Documents", color: "blue" },
-                  { id: "videos", label: "Videos", color: "purple" },
-                  { id: "audio", label: "Audio", color: "orange" },
-                ].map((category) => (
-                  <button
-                    key={category.id}
-                    className={
-                      "category-card " +
-                      category.color +
-                      (filter === category.id ? " category-active" : "")
-                    }
-                    onClick={() => {
-                      setFilter(filter === category.id ? "all" : category.id);
-                    }}
-                  >
-                    <Art kind={category.id} />
-                    <div>
-                      <strong>{category.label}</strong>
-                      <span>
-                        {category.id === "audio"
-                          ? "Find your rhythm"
-                          : bytes(stats?.categories[category.id] || 0) +
-                            " in your drive"}
-                      </span>
-                    </div>
-                    <ChevronRight size={16} />
-                  </button>
-                ))}
-              </section>
-            </>
+            <section
+              className="upload-dropzone"
+              aria-label="File upload area"
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setDragging(false);
+                doUpload(event.dataTransfer.files);
+              }}
+            >
+              <Art kind="cloud" />
+              <div>
+                <h2>Drop files here</h2>
+                <button
+                  className="text-button"
+                  disabled={!!progress}
+                  onClick={() => input.current?.click()}
+                >
+                  or browse files <ArrowRight size={14} />
+                </button>
+              </div>
+            </section>
           )}
           {error && (
             <div className="error-banner" role="alert">
@@ -926,15 +877,6 @@ export default function App() {
                         </button>
                       </span>
                     ))}
-                  {filter !== "all" && (
-                    <button
-                      className="filter-pill"
-                      onClick={() => setFilter("all")}
-                    >
-                      {filter}
-                      <X size={12} />
-                    </button>
-                  )}
                 </div>
                 <div className="toolbar-options">
                   {view === "files" && query && (
@@ -1014,28 +956,24 @@ export default function App() {
                 >
                   <Art
                     kind={
-                      view === "trash"
-                        ? "mint"
-                        : query || filter !== "all"
-                          ? "folder"
-                          : "cloud"
+                      view === "trash" ? "mint" : query ? "folder" : "cloud"
                     }
                   />
                   <h3>
                     {view === "trash"
-                      ? "Nothing to leave behind."
-                      : query || filter !== "all"
+                      ? "Trash is empty"
+                      : query
                         ? "No files found."
-                        : "Room for your next big thing."}
+                        : "No files yet"}
                   </h3>
                   <p>
                     {view === "trash"
                       ? "Deleted files will appear here."
-                      : query || filter !== "all"
-                        ? "Try another search or file type."
-                        : "Drop files here, or make yourself a folder."}
+                      : query
+                        ? "Try another search."
+                        : ""}
                   </p>
-                  {view === "files" && !query && filter === "all" && (
+                  {view === "files" && !query && (
                     <button
                       className="text-button"
                       onClick={() => input.current?.click()}
@@ -1147,7 +1085,6 @@ export default function App() {
               <div className="files-footer">
                 <span>
                   {listing.total} {listing.total === 1 ? "item" : "items"}
-                  {filter !== "all" ? " · filtered on this page" : ""}
                 </span>
                 {listing.total > 80 && (
                   <div className="pagination">
@@ -1168,10 +1105,6 @@ export default function App() {
                     </button>
                   </div>
                 )}
-                <span className="footer-security">
-                  <ShieldCheck size={14} />
-                  Safe in your own space
-                </span>
               </div>
             </section>
           )}
@@ -1282,7 +1215,7 @@ export default function App() {
                   <h2>RootDrive</h2>
                   <p>Your files. Your hardware. Your space.</p>
                 </div>
-                <span className="version">1.0.0</span>
+                <span className="version">MVP 1.0.0</span>
               </div>
               <div className="setting-row">
                 <div>
@@ -1339,19 +1272,13 @@ export default function App() {
                   file
                 </span>
               </div>
+              <UsersSettings account={account} notify={notify} />
               <div className="settings-foot">
                 <ShieldCheck size={18} />
                 Configuration is managed by the server owner in .env.
               </div>
             </section>
           )}
-          <footer className="page-footer">
-            <span>Rooted in your hardware. Free in your hands.</span>
-            <span>
-              <span className="status-dot" />
-              RootDrive
-            </span>
-          </footer>
         </main>
       </div>
       {dragging && (
@@ -1370,7 +1297,7 @@ export default function App() {
         >
           <div>
             <Art kind="cloud" />
-            <h2>Make room for good things.</h2>
+            <h2>Drop files here</h2>
             <p>Drop your files to upload to {path || "My files"}</p>
           </div>
         </div>
@@ -1393,9 +1320,7 @@ export default function App() {
             <span style={{ width: progress.percent + "%" }} />
           </div>
           <small>
-            {progress.percent === 100
-              ? "Saving to your drive…"
-              : "Finding a home on your drive…"}
+            {progress.percent === 100 ? "Saving to your drive…" : "Uploading…"}
           </small>
         </div>
       )}
@@ -1421,11 +1346,51 @@ export default function App() {
               move: "Move to…",
               share: "Share a little",
               permanent: "Delete forever?",
+              properties: "Properties",
             }[dialog.kind]
           }
           close={closeDialog}
         >
           <form onSubmit={perform}>
+            {dialog.kind === "properties" && dialog.entry && (
+              <>
+                <div className="properties-art">
+                  <FileArtwork entry={dialog.entry} />
+                </div>
+                <dl className="properties-list">
+                  {[
+                    ["Name", dialog.entry.name],
+                    [
+                      "Type",
+                      dialog.entry.type === "folder"
+                        ? "Folder"
+                        : dialog.entry.mime || "File",
+                    ],
+                    [
+                      "Size",
+                      dialog.entry.type === "folder"
+                        ? "—"
+                        : bytes(dialog.entry.size) +
+                          " (" +
+                          dialog.entry.size.toLocaleString("en") +
+                          " bytes)",
+                    ],
+                    [
+                      "Modified",
+                      new Date(dialog.entry.modified * 1000).toLocaleString(),
+                    ],
+                    ["Path", dialog.entry.path],
+                  ].map(([label, detail]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{detail}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {isPhoto(dialog.entry) && <ImageDetails entry={dialog.entry} />}
+              </>
+            )}
+
             {["folder", "rename"].includes(dialog.kind) && (
               <>
                 <Art
@@ -1554,9 +1519,9 @@ export default function App() {
                 className="button secondary"
                 onClick={closeDialog}
               >
-                {shareLink ? "Done" : "Cancel"}
+                {shareLink || dialog.kind === "properties" ? "Done" : "Cancel"}
               </button>
-              {!shareLink && (
+              {!shareLink && dialog.kind !== "properties" && (
                 <button
                   className={
                     "button " +
@@ -1575,6 +1540,7 @@ export default function App() {
                       move: "Move here",
                       share: "Create link",
                       permanent: "Delete forever",
+                      properties: "Done",
                     }[dialog.kind]
                   }
                 </button>

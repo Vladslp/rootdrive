@@ -10,6 +10,7 @@ from .config import ROOT, Settings
 from .database import create_database
 from .routers import auth, files, shares
 from .services.filesystem import Filesystem
+from .services.previews import Previews
 
 
 class BodyLimit:
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None):
     app = FastAPI(title='RootDrive', version='1.0.0', lifespan=lifespan)
     app.state.settings, app.state.db = settings, sessions
     app.state.fs = Filesystem(settings)
+    app.state.previews = Previews(settings, app.state.fs)
     app.state.login_attempts = defaultdict(deque)
     app.add_middleware(BodyLimit, limit=settings.max_upload_size_mb * 1024 * 1024 * 20 + 1024 * 1024)
 

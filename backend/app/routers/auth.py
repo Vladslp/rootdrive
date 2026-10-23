@@ -1,8 +1,8 @@
 import secrets
 import time
 from collections import defaultdict, deque
-from fastapi import APIRouter, HTTPException, Request, Response
-from sqlalchemy import delete, select
+from fastapi import APIRouter, HTTPException, Query, Request, Response
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from ..database import Session, User
 from ..schemas import LoginInput, UserInput
@@ -76,3 +76,13 @@ def create_user(body: UserInput, request: Request):
             db.rollback()
             raise HTTPException(409, 'This username already exists')
         return {'id': account.id, 'username': account.username, 'role': account.role}
+
+
+@router.get('/users')
+def list_users(request: Request, offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    user = require_access(request)
+    if not user or user['role'] != 'admin':
+        raise HTTPException(403, 'Administrator access required')
+    with request.app.state.db() as db:
+        users = db.scalars(select(User).order_by(User.created_at, User.id).offset(offset).limit(limit))
+        return {'items': [{'id': account.id, 'username': account.username, 'role': account.role, 'created_at': account.created_at} for account in users], 'total': db.scalar(select(func.count()).select_from(User))}

@@ -13,3 +13,5 @@ storage/
 .DS_Store
 *.log
 work/
+
+*.tsbuildinfo

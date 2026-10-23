@@ -1,26 +1,30 @@
 import os
+import time
+import shutil
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
 from ..database import Share, TrashItem
-from ..schemas import FolderInput, MoveInput, PathInput, RenameInput, TrashInput
+from ..schemas import FileEntry, FileListing, FolderInput, MoveInput, PathInput, RenameInput, StorageStats, TrashInput
 from ..services.security import require_access
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
 
 
-@router.get('/files')
-@router.get('/search')
+@router.get('/files', response_model=FileListing)
+@router.get('/search', response_model=FileListing)
 def list_files(request: Request, path: str = '', q: str = '', recursive: bool = False, sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200)):
     return request.app.state.fs.listing(path, q, recursive, sort, direction, offset, limit)
 
 
-@router.post('/folders', status_code=201)
+@router.post('/folders', status_code=201, response_model=FileEntry)
 def create_folder(body: FolderInput, request: Request):
     fs = request.app.state.fs
     with fs.lock:
         parent = fs.path(body.path)
+        if not parent.is_dir():
+            raise HTTPException(400, 'Destination must be a folder')
         destination = parent / fs.name(body.name)
         fs.free_destination(destination)
         destination.mkdir()
@@ -104,7 +108,7 @@ def relocate(fs, db, source, destination):
     return fs.entry(destination)
 
 
-@router.patch('/files/rename')
+@router.patch('/files/rename', response_model=FileEntry)
 def rename_file(body: RenameInput, request: Request):
     fs = request.app.state.fs
     with fs.lock, request.app.state.db() as db:
@@ -112,7 +116,7 @@ def rename_file(body: RenameInput, request: Request):
         return relocate(fs, db, source, source.parent / fs.name(body.name))
 
 
-@router.post('/files/move')
+@router.post('/files/move', response_model=FileEntry)
 def move_file(body: MoveInput, request: Request):
     fs = request.app.state.fs
     with fs.lock, request.app.state.db() as db:
@@ -136,7 +140,6 @@ def delete_file(body: PathInput, request: Request):
             db.add(item)
             for share in db.scalars(select(Share)):
                 if share.file_path == body.path or share.file_path.startswith(body.path + '/'):
-                    import time
                     share.revoked_at = time.time()
             db.commit()
         except BaseException:
@@ -179,7 +182,6 @@ def restore_trash(body: TrashInput, request: Request):
 
 @router.delete('/trash')
 def remove_trash(body: TrashInput, request: Request):
-    import shutil
     fs = request.app.state.fs
     with fs.lock, request.app.state.db() as db:
         item = db.get(TrashItem, body.id)
@@ -195,6 +197,6 @@ def remove_trash(body: TrashInput, request: Request):
         return {'ok': True}
 
 
-@router.get('/storage/stats')
+@router.get('/storage/stats', response_model=StorageStats)
 def storage_stats(request: Request):
     return request.app.state.fs.stats()

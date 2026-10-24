@@ -404,7 +404,7 @@ export default function App() {
   if (!account)
     return (
       <div className="connection-screen">
-        <img src="/assets/app-icon.png" alt="RootDrive" />
+        <img src="/assets/app-icon.png?v=flat-roots-2" alt="RootDrive" />
         <h1>RootDrive</h1>
         {accountError ? (
           <>
@@ -440,7 +440,7 @@ export default function App() {
           onClick={() => navigate("files")}
           aria-label="RootDrive home"
         >
-          <img className="brand-logo" src="/assets/app-icon.png" alt="" />
+          <img className="brand-logo" src="/assets/app-icon.png?v=flat-roots-2" alt="" />
           <span>
             RootDrive<span className="brand-dot">.</span>
           </span>
@@ -1568,7 +1568,7 @@ function Storage({
       name: "RootDrive files",
       size: stats.stored_bytes,
       color: "storage-blue",
-      detail: stats.file_count.toLocaleString("en") + " files",
+      detail: stats.file_count.toLocaleString("en") + (stats.file_count === 1 ? " file" : " files"),
       action: "files" as View,
     },
     {
@@ -1717,7 +1717,7 @@ function Login({
         {theme === "light" ? <Moon /> : <Sun />}
       </button>
       <form className="login-card" onSubmit={submit}>
-        <img className="login-logo" src="/assets/app-icon.png" alt="" />
+        <img className="login-logo" src="/assets/app-icon.png?v=flat-roots-2" alt="" />
         <h1>RootDrive</h1>
         <label className="field-label">
           Username

@@ -10,7 +10,7 @@ case "${1:-}" in
     "") ;;
     --install-only) MODE=install ;;
     --help|-h)
-        printf '%s\n' 'Usage: ./start.sh [--install-only]' 'Installs missing project dependencies, builds the frontend when needed, and starts RootDrive.' 'Requires Python 3.11+. Node.js and npm are needed only to build the frontend.' 'Stop the server with Ctrl+C.'
+        printf '%s\n' 'Usage: ./start.sh [--install-only]' 'Installs missing project dependencies, builds the frontend when needed, and starts RootDrive.' 'Requires Python 3.11+. Node.js and npm are needed only to build the frontend.' 'Stop the server with Ctrl+C or ./stop.sh.'
         exit 0
         ;;
     *) printf '%s\n' "Unknown option: $1" 'Usage: ./start.sh [--install-only]' >&2; exit 2 ;;
@@ -236,7 +236,7 @@ try:
     print(f'Port {settings.port} is already used by another server. Change PORT in .env or stop that server.', file=sys.stderr)
     sys.exit(11)
 except (OSError, http.client.HTTPException):
-    print(f'\n     {blue}{url}{reset}\n\n     {muted}Ctrl+C  stop server{reset}\n', flush=True)
+    print(f'\n     {blue}{url}{reset}\n\n     {muted}Ctrl+C or ./stop.sh  stop server{reset}\n', flush=True)
 finally:
     connection.close()
 PY

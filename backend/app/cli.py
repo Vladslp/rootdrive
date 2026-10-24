@@ -15,7 +15,9 @@ def main():
     settings.prepare()
     if arguments.command == 'serve':
         import uvicorn
-        uvicorn.run('app.main:create_app', factory=True, host=settings.host, port=settings.port)
+        from .control import server_control
+        with server_control():
+            uvicorn.run('app.main:create_app', factory=True, host=settings.host, port=settings.port)
         return
     username = arguments.username or input('Username: ').strip()
     if not username or len(username) > 80:

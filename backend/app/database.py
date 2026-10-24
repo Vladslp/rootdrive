@@ -116,3 +116,9 @@ class ArchiveExport(Base):
     owner: Mapped[str] = mapped_column(String)
     name: Mapped[str] = mapped_column(String)
     created_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class ApplicationSetting(Base):
+    __tablename__ = 'application_settings'
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String)

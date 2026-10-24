@@ -2961,3 +2961,122 @@ body {
     visibility: visible;
   }
 }
+
+.upload-limit-settings .section-heading {
+  margin-bottom: 23px;
+}
+.upload-limit-settings h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.upload-limit-settings h3 svg {
+  color: var(--muted);
+}
+.upload-limit-settings output {
+  background: var(--blue-soft);
+  color: var(--blue-text);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 13px;
+  border-radius: 9px;
+  min-width: 70px;
+  text-align: center;
+}
+.upload-limit-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+.upload-limit-label span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.upload-limit-settings input.upload-range {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  height: 36px;
+  padding: 0;
+  margin-top: 8px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.upload-limit-settings input.upload-range:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.upload-limit-settings input.upload-range::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 8px;
+  background: linear-gradient(
+    to right,
+    var(--blue) 0%,
+    var(--blue) var(--range-progress),
+    var(--border) var(--range-progress),
+    var(--border) 100%
+  );
+}
+.upload-limit-settings input.upload-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 19px;
+  height: 19px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 3px solid var(--panel);
+  background: var(--blue);
+  box-shadow:
+    0 0 0 1px var(--blue),
+    0 2px 5px #3456a52b;
+}
+.upload-limit-settings input.upload-range::-moz-range-track {
+  height: 5px;
+  border-radius: 8px;
+  background: var(--border);
+}
+.upload-limit-settings input.upload-range::-moz-range-progress {
+  height: 5px;
+  border-radius: 8px;
+  background: var(--blue);
+}
+.upload-limit-settings input.upload-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 3px solid var(--panel);
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+.upload-limit-settings input.upload-range:focus-visible {
+  outline: 3px solid var(--blue-soft);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.range-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 10px;
+}
+.upload-limit-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-top: 23px;
+}
+.upload-limit-footer > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.upload-limit-footer .button {
+  min-height: 36px;
+  font-size: 11px;
+  padding: 8px 14px;
+}

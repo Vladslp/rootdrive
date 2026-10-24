@@ -103,3 +103,7 @@ class UploadInput(BaseModel):
     last_modified: float = Field(default=0, ge=0)
     source_name: str = Field(default='', max_length=240)
     overwrite: bool = False
+
+
+class SettingsInput(BaseModel):
+    max_upload_size_mb: int = Field(ge=1, le=1048576, strict=True)

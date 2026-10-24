@@ -55,7 +55,7 @@ To prepare the installation without starting the server:
 ./start.sh --install-only
 ```
 
-Stop a foreground launch with **Ctrl+C**. If RootDrive is already listening on the configured address, the launcher reports that instead of starting a second instance. A conflicting server on the configured port must be stopped or `PORT` changed.
+Stop a foreground launch with **Ctrl+C**, or run `./stop.sh` from another terminal. If RootDrive is already listening on the configured address, the launcher reports that instead of starting a second instance. A conflicting server on the configured port must be stopped or `PORT` changed.
 
 ### Manual installation
 
@@ -78,7 +78,13 @@ Open <http://127.0.0.1:8000>. API documentation is at <http://127.0.0.1:8000/doc
 
 ## Stop the server
 
-For a foreground `python run.py` process, press **Ctrl+C** in its terminal. For a background process, find the listening process with `lsof -nP -iTCP:8000 -sTCP:LISTEN`, then send `kill PID` to that RootDrive process. Replace `8000` if you changed the port. For a systemd deployment, use `sudo systemctl stop rootdrive`.
+```bash
+./stop.sh
+```
+
+The companion script uses the same terminal design as the launcher. It requests graceful shutdown of the server started from this project with `./start.sh` or `python run.py`. It reports when the server is already stopped and waits briefly for active requests to finish. It never force-kills pending uploads. Run it as the same operating-system user as the server. The control channel is a private Unix socket under `/tmp/rootdrive-UID`, keyed to the project directory identity, so another project or a different process on the HTTP port is not targeted. A stale socket is safely replaced on the next launch. It needs Python 3.11+, with no third-party modules or installation step.
+
+For a foreground `python run.py` process, **Ctrl+C** also works. Development servers launched directly with `uvicorn` are stopped in their own terminal; `stop.sh` manages the project launcher. For a background process, find the listening process with `lsof -nP -iTCP:8000 -sTCP:LISTEN`, then send `kill PID` to that RootDrive process. Replace `8000` if you changed the port. For a systemd deployment, use `sudo systemctl stop rootdrive`.
 
 ## Development
 
@@ -143,12 +149,18 @@ Copy `.env.example` to `.env`. Relative paths are resolved from the project dire
 | `AUTH_ENABLED` | `false` | Require login |
 | `ENABLE_PUBLIC_SHARES` | `false` | Enable anonymous file download links |
 | `COOKIE_SECURE` | `false` | Restrict session cookies to HTTPS when true |
-| `MAX_UPLOAD_SIZE_MB` | `2048` | Maximum size of each file |
+| `MAX_UPLOAD_SIZE_MB` | `2048` | Initial per-file limit; a saved Settings override takes precedence |
 | `SESSION_HOURS` | `24` | Session duration |
 | `MAX_PREVIEW_PIXELS` | `50000000` | Maximum decoded photo size for thumbnails/previews |
 | `PREVIEW_CACHE_SIZE_MB` | `512` | Derived JPEG preview cache limit |
 
 Storage must not contain application code, the database, `.env` or the internal directories. Keep `STORAGE_PATH` and `INTERNAL_PATH` on the **same filesystem** for rename-based trash operations. For an external disk, use sibling paths such as `/mnt/drive/files` and `/mnt/drive/rootdrive-internal`. The database can remain on the host disk.
+
+## Upload limit in Settings
+
+Settings → Uploads provides a slider from 1 MiB to 64 GiB per file, with power-of-two steps. Choose a value and press Save. Existing custom values from configuration are retained as an additional slider position. The backend accepts validated settings up to 1 TiB. Changes take effect immediately and persist in SQLite's `application_settings` table; a saved value overrides the environment default after restart. The `.env` file is not rewritten.
+
+With authentication enabled, only administrators can save the limit and CSRF protection is required. Members can see the current limit. With authentication disabled, the shared workspace can change it. Reducing a limit also applies to unfinished transfers: chunks and completion are rejected while a file exceeds the current limit; raising the limit allows those transfers to resume. Existing stored files are unaffected. The multipart request-body guard reads the current limit for each new request.
 
 ## Local network access
 
@@ -220,11 +232,13 @@ backend/app/
   database.py           SQLAlchemy models and SQLite setup
   schemas.py            Pydantic request validation
   cli.py                Server startup and administrator creation
+  control.py            Private local shutdown channel for the launcher
   routers/
     files.py            Files, folders, trash, search and storage endpoints
     auth.py             Login, logout, sessions and administrator-created users
     shares.py           Share creation, revocation and public downloads
     uploads.py          Persistent upload jobs, bounded chunks and completion
+    settings.py         Validated live upload limit and administrator checks
     workspace.py        Favorites, tags, bulk actions, ZIPs, versions and media
   services/
     filesystem.py       Path validation, listing, streaming downloads and statistics
@@ -285,6 +299,7 @@ All private endpoints require a session when authentication is enabled. State-ch
 | GET | `/api/versions/{id}/download` | Download saved contents |
 | POST | `/api/versions/{id}/restore` | Restore while preserving current contents |
 | GET, HEAD | `/api/files/media?path=...` | Protected audio/video playback with byte ranges |
+| GET, PATCH | `/api/settings` | Read/save per-file upload limit |
 | GET | `/api/auth/me` | Account and feature flags |
 | POST | `/api/auth/login` | Login with `username`, `password` |
 | POST | `/api/auth/logout` | Revoke current session |
@@ -303,7 +318,7 @@ pytest -q
 npm --prefix frontend run build
 ```
 
-Tests use temporary storage directories and temporary SQLite databases, never your workspace files. Coverage includes file lifecycle, conflicts, restoration, permanent deletion, unsafe names, traversal, symlink escapes, streaming upload limits, failed-batch cleanup, search/pagination, previews, stats, optional authentication, CSRF, administrator restrictions, public sharing, revocation/expiry and restart persistence. Additional tests cover resumable folder transfers across restart, stale offsets, source-prefix checks, cancelled/empty uploads, chunk limits, overwrite conflicts, original-file changes, version restore, rollback on database failure, metadata lifecycle, tag filtering, batch overlap/conflicts, ZIP content/symlink isolation, media ranges, storage breakdown and per-account transfer/favorite/export access.
+Tests use temporary storage directories and temporary SQLite databases, never your workspace files. Coverage includes file lifecycle, conflicts, restoration, permanent deletion, unsafe names, traversal, symlink escapes, streaming upload limits, failed-batch cleanup, search/pagination, previews, stats, optional authentication, CSRF, administrator restrictions, public sharing, revocation/expiry and restart persistence. Additional tests cover resumable folder transfers across restart, stale offsets, source-prefix checks, cancelled/empty uploads, chunk limits, overwrite conflicts, original-file changes, version restore, rollback on database failure, metadata lifecycle, tag filtering, batch overlap/conflicts, ZIP content/symlink isolation, media ranges, storage breakdown and per-account transfer/favorite/export access. Settings tests verify live limits, restart persistence, strict validation, administrator/CSRF enforcement, pending-transfer limits and request-body guards. Shutdown tests use separate processes and temporary project directories to verify graceful stop, project isolation and duplicate-server protection.
 
 ## Raspberry Pi and older hardware
 
@@ -325,7 +340,7 @@ Install a supported Node.js version to build locally, or copy the project and a 
 - Media playback, saved-version downloads and generated ZIPs support byte ranges. Original attachment downloads stream sequentially; large PDF inline behavior depends on the browser.
 - Directory scanning, recursive search and initial storage stats can take time on very large collections. There is no background indexer.
 - The move picker is paginated. Bulk selection covers the current page, not every result in a large search.
-- The first administrator is created through the CLI. Further accounts are managed in Settings by administrators. Settings does not edit server environment variables.
+- The first administrator is created through the CLI. Further accounts are managed in Settings by administrators. Settings saves the upload limit in SQLite and does not edit server environment variables.
 - No full activity history, synchronization client or automated backup.
 - No antivirus scanning or content sanitization. Downloads are attachments; inline previews are limited to supported image formats and PDFs.
 - Interrupted operations after a crash need administrator inspection. SQLite and filesystem changes are not power-loss atomic.

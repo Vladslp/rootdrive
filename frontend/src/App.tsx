@@ -67,6 +67,7 @@ import {
   type Modal,
 } from "./components/FileDialogs";
 import { UsersSettings } from "./components/UsersSettings";
+import { UploadLimitSettings } from "./components/UploadLimitSettings";
 import { UploadQueue } from "./components/UploadQueue";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
@@ -440,7 +441,11 @@ export default function App() {
           onClick={() => navigate("files")}
           aria-label="RootDrive home"
         >
-          <img className="brand-logo" src="/assets/app-icon.png?v=flat-roots-2" alt="" />
+          <img
+            className="brand-logo"
+            src="/assets/app-icon.png?v=flat-roots-2"
+            alt=""
+          />
           <span>
             RootDrive<span className="brand-dot">.</span>
           </span>
@@ -1222,6 +1227,17 @@ export default function App() {
                   ))}
                 </div>
               </section>
+              <UploadLimitSettings
+                account={account}
+                saved={(limit) => {
+                  setAccount((current) =>
+                    current
+                      ? { ...current, max_upload_size_mb: limit }
+                      : current,
+                  );
+                  notify("Upload limit updated");
+                }}
+              />
               <UsersSettings account={account} notify={notify} />
               <section className="settings-section">
                 <h3>Server</h3>
@@ -1229,10 +1245,6 @@ export default function App() {
                   <div>
                     <dt>Version</dt>
                     <dd>MVP 1.0.0</dd>
-                  </div>
-                  <div>
-                    <dt>Upload limit</dt>
-                    <dd>{bytes(account.max_upload_size_mb * 1024 * 1024)}</dd>
                   </div>
                   <div>
                     <dt>Public links</dt>
@@ -1568,7 +1580,9 @@ function Storage({
       name: "RootDrive files",
       size: stats.stored_bytes,
       color: "storage-blue",
-      detail: stats.file_count.toLocaleString("en") + (stats.file_count === 1 ? " file" : " files"),
+      detail:
+        stats.file_count.toLocaleString("en") +
+        (stats.file_count === 1 ? " file" : " files"),
       action: "files" as View,
     },
     {
@@ -1717,7 +1731,11 @@ function Login({
         {theme === "light" ? <Moon /> : <Sun />}
       </button>
       <form className="login-card" onSubmit={submit}>
-        <img className="login-logo" src="/assets/app-icon.png?v=flat-roots-2" alt="" />
+        <img
+          className="login-logo"
+          src="/assets/app-icon.png?v=flat-roots-2"
+          alt=""
+        />
         <h1>RootDrive</h1>
         <label className="field-label">
           Username

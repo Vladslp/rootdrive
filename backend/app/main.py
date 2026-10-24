@@ -7,26 +7,27 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import ROOT, Settings
-from .database import create_database
-from .routers import auth, files, shares, uploads, workspace
+from .database import ApplicationSetting, create_database
+from .routers import auth, files, shares, uploads, workspace, settings as server_settings
 from .services.filesystem import Filesystem
 from .services.previews import Previews
 
 
 class BodyLimit:
-    def __init__(self, app, limit):
-        self.app, self.limit = app, limit
+    def __init__(self, app, settings):
+        self.app, self.settings = app, settings
 
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
         received = 0
+        limit = self.settings.max_upload_size_mb * 1024 * 1024 * 20 + 1024 * 1024
 
         async def limited_receive():
             nonlocal received
             message = await receive()
             received += len(message.get('body', b''))
-            if received > self.limit:
+            if received > limit:
                 raise HTTPException(413, 'Upload request exceeds the configured limit')
             return message
 
@@ -37,6 +38,16 @@ def create_app(settings: Settings | None = None):
     settings = settings or Settings()
     settings.prepare()
     engine, sessions = create_database(settings.database_path)
+    with sessions() as db:
+        saved_limit = db.get(ApplicationSetting, 'max_upload_size_mb')
+        if saved_limit is not None:
+            try:
+                value = int(saved_limit.value)
+            except ValueError:
+                raise ValueError('Saved upload limit is invalid')
+            if not 1 <= value <= 1048576:
+                raise ValueError('Saved upload limit is outside the supported range')
+            settings.max_upload_size_mb = value
 
     @asynccontextmanager
     async def lifespan(app):
@@ -48,7 +59,7 @@ def create_app(settings: Settings | None = None):
     app.state.fs = Filesystem(settings)
     app.state.previews = Previews(settings, app.state.fs)
     app.state.login_attempts = defaultdict(deque)
-    app.add_middleware(BodyLimit, limit=settings.max_upload_size_mb * 1024 * 1024 * 20 + 1024 * 1024)
+    app.add_middleware(BodyLimit, settings=settings)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request, error):
@@ -87,6 +98,7 @@ def create_app(settings: Settings | None = None):
     app.include_router(shares.router)
     app.include_router(uploads.router)
     app.include_router(workspace.router)
+    app.include_router(server_settings.router)
     dist = ROOT / 'frontend/dist'
     if dist.exists():
         app.mount('/assets', StaticFiles(directory=dist / 'assets'), name='assets')

@@ -105,6 +105,8 @@ async def append_upload(identifier: str, request: Request, offset: int = Query(g
         fs = request.app.state.fs
         with fs.lock, request.app.state.db() as db:
             job = find_job(db, identifier, owner_key(user))
+            if job.size > fs.settings.max_upload_size_mb * 1024 * 1024:
+                raise HTTPException(413, 'File exceeds the current upload limit')
             if offset != job.received:
                 raise HTTPException(409, 'Upload offset changed. Refresh upload status and resume')
             if job.received + len(content) > job.size:
@@ -160,6 +162,8 @@ def complete_upload(identifier: str, request: Request, user=Depends(require_acce
         job = find_job(db, identifier, owner_key(user), active=False)
         if job.status == 'completed':
             return fs.entry(fs.path(job.path))
+        if job.size > fs.settings.max_upload_size_mb * 1024 * 1024:
+            raise HTTPException(413, 'File exceeds the current upload limit')
         if job.status != 'open' or job.received != job.size:
             raise HTTPException(409, 'Upload is incomplete')
         target = validate_target(fs, job.path)

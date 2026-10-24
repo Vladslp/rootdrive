@@ -112,8 +112,12 @@ class Filesystem:
                         mime = mimetypes.guess_type(path.name)[0] or ''
                         category = 'images' if mime.startswith('image/') else 'videos' if mime.startswith('video/') else 'documents' if mime.startswith('text/') or mime == 'application/pdf' else 'other'
                         categories[category] += amount
+                internal_sizes = {}
+                for key, directory in [('trash_bytes', 'trash'), ('versions_bytes', 'versions'), ('uploads_bytes', 'uploads'), ('cache_bytes', 'previews'), ('exports_bytes', 'exports')]:
+                    location = self.settings.internal_path / directory
+                    internal_sizes[key] = sum(path.stat().st_size for path in self.walk(location, True) if path.is_file()) if location.is_dir() else 0
                 disk = shutil.disk_usage(self.root)
-                self.stats_cache = {'file_count': count, 'stored_bytes': size, 'disk_free': disk.free, 'disk_total': disk.total, 'disk_used': disk.used, 'disk_percent': round(disk.used / disk.total * 100, 1), 'categories': categories}
+                self.stats_cache = {'file_count': count, 'stored_bytes': size, 'disk_free': disk.free, 'disk_total': disk.total, 'disk_used': disk.used, **internal_sizes, 'system_bytes': max(0, disk.used - size - sum(internal_sizes.values())), 'disk_percent': round(disk.used / disk.total * 100, 1), 'categories': categories}
                 self.stats_time = time.monotonic()
             return self.stats_cache
 

@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import ROOT, Settings
 from .database import create_database
-from .routers import auth, files, shares
+from .routers import auth, files, shares, uploads, workspace
 from .services.filesystem import Filesystem
 from .services.previews import Previews
 
@@ -85,6 +85,8 @@ def create_app(settings: Settings | None = None):
     app.include_router(auth.router)
     app.include_router(files.router)
     app.include_router(shares.router)
+    app.include_router(uploads.router)
+    app.include_router(workspace.router)
     dist = ROOT / 'frontend/dist'
     if dist.exists():
         app.mount('/assets', StaticFiles(directory=dist / 'assets'), name='assets')

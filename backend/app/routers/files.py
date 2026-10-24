@@ -1,22 +1,26 @@
 import os
-import time
 import shutil
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
-from ..database import Share, TrashItem
+from ..database import TrashItem
 from ..schemas import FileEntry, FileListing, FolderInput, MoveInput, PathInput, RenameInput, StorageStats, TrashInput
 from ..services.security import require_access
 from ..services.metadata import image_metadata
+from ..services.workspace import enrich, owner_key, relocate_metadata, trash_metadata, restore_metadata, purge_metadata
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
 
 
 @router.get('/files', response_model=FileListing)
 @router.get('/search', response_model=FileListing)
-def list_files(request: Request, path: str = '', q: str = '', recursive: bool = False, sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200)):
-    return request.app.state.fs.listing(path, q, recursive, sort, direction, offset, limit)
+def list_files(request: Request, path: str = '', q: str = '', recursive: bool = False, sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200), user=Depends(require_access)):
+    fs = request.app.state.fs
+    with fs.lock, request.app.state.db() as db:
+        listing = fs.listing(path, q, recursive, sort, direction, offset, limit)
+        enrich(db, listing['items'], owner_key(user))
+        return listing
 
 
 @router.post('/folders', status_code=201, response_model=FileEntry)
@@ -102,12 +106,9 @@ def relocate(fs, db, source, destination):
     if source.is_dir() and destination.is_relative_to(source):
         raise HTTPException(400, 'Cannot move a folder inside itself')
     old = fs.relative(source)
-    shares = list(db.scalars(select(Share).where(Share.revoked_at.is_(None))))
     os.rename(source, destination)
     try:
-        for share in shares:
-            if share.file_path == old or share.file_path.startswith(old + '/'):
-                share.file_path = fs.relative(destination) + share.file_path[len(old):]
+        relocate_metadata(db, old, fs.relative(destination))
         db.commit()
     except BaseException:
         os.rename(destination, source)
@@ -146,9 +147,7 @@ def delete_file(body: PathInput, request: Request):
         os.rename(source, destination)
         try:
             db.add(item)
-            for share in db.scalars(select(Share)):
-                if share.file_path == body.path or share.file_path.startswith(body.path + '/'):
-                    share.revoked_at = time.time()
+            trash_metadata(db, body.path, identifier)
             db.commit()
         except BaseException:
             os.rename(destination, source)
@@ -179,6 +178,7 @@ def restore_trash(body: TrashInput, request: Request):
         source = fs.settings.internal_path / 'trash' / item.stored_path
         os.rename(source, destination)
         try:
+            restore_metadata(db, item.id)
             db.delete(item)
             db.commit()
         except BaseException:
@@ -200,8 +200,10 @@ def remove_trash(body: TrashInput, request: Request):
             shutil.rmtree(source)
         else:
             source.unlink(missing_ok=True)
+        purge_metadata(db, item.id, fs.settings)
         db.delete(item)
         db.commit()
+        fs.invalidate()
         return {'ok': True}
 
 

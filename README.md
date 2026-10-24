@@ -34,7 +34,26 @@ Nothing is uploaded to a third-party service. Runtime does not load fonts, scrip
 
 The backend deliberately uses `O_NOFOLLOW`, available on Linux and macOS. Native Windows deployment is not currently supported; use WSL2. Any computer running a supported operating system can host RootDrive. Raspberry Pi is one option, not a requirement.
 
-## Install
+## Install and start
+
+```bash
+cd ~/Documents/rootdrive
+./start.sh
+```
+
+The same script prepares and launches the application. It finds Python 3.11+, creates `.venv` if missing, installs missing/incompatible Python dependencies, creates `.env` only when absent, installs frontend dependencies when needed, and rebuilds the frontend when its source changes. Repeat launches reuse the prepared environment without network access. Existing `.env`, user files and databases are preserved. It works when invoked from another directory, including project paths containing spaces.
+
+Python itself must already be installed. Node.js and npm are required to build the frontend; once the build is prepared, startup does not require Node.js. If a required system runtime is missing, the script prints an actionable message rather than modifying the operating system.
+
+To prepare the installation without starting the server:
+
+```bash
+./start.sh --install-only
+```
+
+Stop a foreground launch with **Ctrl+C**. If RootDrive is already listening on the configured address, the launcher reports that instead of starting a second instance. A conflicting server on the configured port must be stopped or `PORT` changed.
+
+### Manual installation
 
 Run all commands from the project directory:
 

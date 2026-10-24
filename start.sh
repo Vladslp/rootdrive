@@ -20,6 +20,46 @@ if [ "$#" -gt 1 ]; then
     exit 2
 fi
 
+ROOTDRIVE_COLOR=0
+if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ] && [ "${NO_COLOR+x}" != x ]; then
+    ROOTDRIVE_COLOR=1
+fi
+export ROOTDRIVE_COLOR
+if [ "$ROOTDRIVE_COLOR" -eq 1 ]; then
+    RD_RESET=$(printf '\033[0m')
+    RD_BOLD=$(printf '\033[1m')
+    RD_BLUE=$(printf '\033[38;5;111m')
+    RD_MUTED=$(printf '\033[38;5;245m')
+    RD_GREEN=$(printf '\033[38;5;114m')
+    RD_RED=$(printf '\033[38;5;210m')
+else
+    RD_RESET= RD_BOLD= RD_BLUE= RD_MUTED= RD_GREEN= RD_RED=
+fi
+
+stage() {
+    printf '\n  %s%s%s  %s%s%s\n' "$RD_BLUE" "$1" "$RD_RESET" "$RD_BOLD" "$2" "$RD_RESET"
+}
+note() {
+    printf '         %s%s%s\n' "$RD_MUTED" "$1" "$RD_RESET"
+}
+ready() {
+    printf '\n  %s%s%s  %s\n\n' "$RD_GREEN" '✓' "$RD_RESET" "$1"
+}
+
+launcher_exit() {
+    if [ "$1" -ne 0 ]; then
+        printf '\n  %s%s%s  Setup stopped. Check the message above.\n\n' "$RD_RED" '✕' "$RD_RESET" >&2
+    fi
+}
+trap 'launcher_exit $?' 0
+
+printf '\n  %s%s  ┌───┐ ┌───┐%s\n'  "$RD_BLUE" "$RD_BOLD" "$RD_RESET"
+printf '  %s%s  │ · │ │ · │%s   %s%sRootDrive%s\n' "$RD_BLUE" "$RD_BOLD" "$RD_RESET" "$RD_BOLD" "$RD_BLUE" "$RD_RESET"
+printf '  %s%s  └─┬─┘ └─┬─┘%s   %sSetup & launch%s\n' "$RD_BLUE" "$RD_BOLD" "$RD_RESET" "$RD_MUTED" "$RD_RESET"
+printf '  %s%s    ╰──┬──╯%s\n' "$RD_BLUE" "$RD_BOLD" "$RD_RESET"
+printf '  %s%s       ╵%s\n' "$RD_BLUE" "$RD_BOLD" "$RD_RESET"
+stage '[1/4]' 'Python environment'
+
 VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
 if ! "$VENV_PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
     if [ -e "$PROJECT_DIR/.venv" ] || [ -L "$PROJECT_DIR/.venv" ]; then
@@ -37,7 +77,7 @@ if ! "$VENV_PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) el
         printf '%s\n' 'Python 3.11 or newer is required. Install it, then run ./start.sh again.' >&2
         exit 1
     fi
-    printf '%s\n' 'Creating Python environment…'
+    note 'Creating a local virtual environment…'
     if ! "$PYTHON_BIN" -m venv "$PROJECT_DIR/.venv"; then
         printf '%s\n' 'Could not create the virtual environment. On Debian/Ubuntu, install the python3-venv package for your Python version.' >&2
         exit 1
@@ -70,19 +110,23 @@ for name in ['fastapi', 'uvicorn', 'sqlalchemy', 'pydantic_settings', 'argon2', 
 PY
 }
 
+note "$("$VENV_PYTHON" -c 'import platform; print("Python " + platform.python_version())')"
+stage '[2/4]' 'Backend dependencies'
 if ! dependencies_ready || ! "$VENV_PYTHON" -m pip check >/dev/null 2>&1; then
-    printf '%s\n' 'Installing Python dependencies…'
+    note 'Installing Python packages…'
     "$VENV_PYTHON" -m pip install --disable-pip-version-check -r requirements.txt
     if ! dependencies_ready; then
         printf '%s\n' 'Python dependencies could not be loaded. Check the installation output above.' >&2
         exit 1
     fi
     "$VENV_PYTHON" -m pip check
+else
+    note 'Already installed'
 fi
 
 if [ ! -e .env ] && [ ! -L .env ]; then
     cp .env.example .env
-    printf '%s\n' 'Created .env with local defaults.'
+    note 'Created .env with local defaults'
 fi
 
 fingerprint() {
@@ -112,6 +156,7 @@ print(hash_value.hexdigest())
 PY
 }
 
+stage '[3/4]' 'Web interface'
 BUILD_HASH=$(fingerprint source)
 BUILD_MARKER=frontend/dist/.rootdrive-build
 SAVED_BUILD_HASH=
@@ -121,7 +166,7 @@ fi
 if [ ! -f frontend/dist/index.html ] || [ "$BUILD_HASH" != "$SAVED_BUILD_HASH" ]; then
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         if [ -f frontend/dist/index.html ] && [ -z "$SAVED_BUILD_HASH" ]; then
-            printf '%s\n' 'Using the supplied frontend build. Install Node.js and npm if you need to rebuild it.'
+            note 'Using the supplied frontend build'
         else
             printf '%s\n' 'Building the frontend requires Node.js 20.19+ or 22.12+ and npm. Install them, then run ./start.sh again.' >&2
             exit 1
@@ -139,24 +184,29 @@ if [ ! -f frontend/dist/index.html ] || [ "$BUILD_HASH" != "$SAVED_BUILD_HASH" ]
             SAVED_PACKAGE_HASH=$(cat "$PACKAGE_MARKER")
         fi
         if [ ! -x frontend/node_modules/.bin/vite ] || [ ! -x frontend/node_modules/.bin/tsc ] || [ "$PACKAGE_HASH" != "$SAVED_PACKAGE_HASH" ]; then
-            printf '%s\n' 'Installing frontend dependencies…'
+            note 'Installing frontend packages…'
             npm --prefix frontend ci --no-audit --no-fund
             printf '%s\n' "$PACKAGE_HASH" > "$PACKAGE_MARKER"
         fi
-        printf '%s\n' 'Building frontend…'
+        note 'Building the interface…'
         npm --prefix frontend run build
         printf '%s\n' "$BUILD_HASH" > "$BUILD_MARKER"
     fi
+else
+    note 'Build is up to date'
 fi
 
 if [ "$MODE" = install ]; then
-    printf '%s\n' 'RootDrive is ready. Run ./start.sh to start it.'
+    stage '[4/4]' 'Installation complete'
+    ready 'Ready. Run ./start.sh to start your drive.'
     exit 0
 fi
 
+stage '[4/4]' 'Starting server'
 STATUS=0
 "$VENV_PYTHON" - <<'PY' || STATUS=$?
 import http.client
+import os
 import json
 import sys
 sys.path.insert(0, 'backend')
@@ -166,6 +216,11 @@ settings = Settings()
 host = '127.0.0.1' if settings.host == '0.0.0.0' else '::1' if settings.host == '::' else settings.host
 address = f'[{host}]' if ':' in host else host
 url = f'http://{address}:{settings.port}'
+colored = os.environ.get('ROOTDRIVE_COLOR') == '1'
+blue = '\033[38;5;111m' if colored else ''
+green = '\033[38;5;114m' if colored else ''
+muted = '\033[38;5;245m' if colored else ''
+reset = '\033[0m' if colored else ''
 connection = http.client.HTTPConnection(host, settings.port, timeout=2)
 try:
     connection.request('GET', '/api/health')
@@ -176,13 +231,12 @@ try:
     except (ValueError, UnicodeDecodeError):
         existing = {}
     if isinstance(existing, dict) and response.status == 200 and existing.get('name') == 'RootDrive' and existing.get('status') == 'ok':
-        print(f'RootDrive is already running at {url}')
+        print(f'\n  {green}✓{reset}  RootDrive is already running\n\n     {blue}{url}{reset}\n', flush=True)
         sys.exit(10)
     print(f'Port {settings.port} is already used by another server. Change PORT in .env or stop that server.', file=sys.stderr)
     sys.exit(11)
 except (OSError, http.client.HTTPException):
-    print(f'Starting RootDrive at {url}')
-    print('Press Ctrl+C to stop.')
+    print(f'\n     {blue}{url}{reset}\n\n     {muted}Ctrl+C  stop server{reset}\n', flush=True)
 finally:
     connection.close()
 PY

@@ -1,7 +1,5 @@
 # RootDrive
 
-**Your files. Your hardware. Your space.**
-
 RootDrive is a lightweight personal file server with a Python backend and a responsive React interface. Run it on an old laptop, desktop, mini PC, Linux server or Raspberry Pi. The built application runs through one HTTP port and needs no persistent Node process, Docker, cloud account, API key or external service.
 
 Created as a university Python semester project. The implementation demonstrates a REST backend, safe filesystem operations and relational metadata persistence.
@@ -9,17 +7,23 @@ Created as a university Python semester project. The implementation demonstrates
 ## Implemented features
 
 - Browse folders in grid or list view; breadcrumbs and file selection.
-- Multiple file uploads, drag and drop, progress and configurable per-file limits.
+- Multiple files and folder uploads with hierarchy, drag and drop, per-file progress and configurable limits.
+- Persistent chunked uploads with pause/resume, reconnect retries and reselecting originals after a page reload.
+- Favorites, colored tags, tag filtering and custom folder colors.
+- Page selection and bulk move, trash or ZIP download; individual folders download as ZIP.
+- Version history on explicit replacement, previous-version downloads and safe restoration.
+- Native browser audio/video playback with HTTP byte ranges.
 - Download, create folder, rename, move and delete to trash.
 - Restore deleted items or permanently remove individual trash items.
 - Case-insensitive filename search, optional recursive search and pagination.
 - Sort by name, modification date, size or type.
 - JPEG, PNG, WebP, GIF, HEIC, HEIF, AVIF and PDF previews.
 - Cached photo thumbnails and file properties with expandable camera/lens EXIF metadata.
-- Device capacity, free space, disk usage and RootDrive file totals.
+- Disk breakdown into RootDrive files, Trash, Versions, Temporary data, System and Free space.
+- Light and dark themes with a saved appearance preference; file search beside the file toolbar.
 - Optional login, multiple accounts, administrator-created users and logout.
 - Optional expiring public download links and link revocation.
-- Original illustrated icons, a RootDrive application mark and mobile navigation.
+- Original illustrated file/folder icons, a minimal 2D disk-and-roots application mark and mobile navigation.
 
 Finder `.DS_Store` metadata is hidden from file listings and file totals.
 
@@ -41,7 +45,7 @@ cd ~/Documents/rootdrive
 ./start.sh
 ```
 
-The same script prepares and launches the application. It finds Python 3.11+, creates `.venv` if missing, installs missing/incompatible Python dependencies, creates `.env` only when absent, installs frontend dependencies when needed, and rebuilds the frontend when its source changes. Repeat launches reuse the prepared environment without network access. Existing `.env`, user files and databases are preserved. It works when invoked from another directory, including project paths containing spaces.
+The same script prepares and launches the application. It finds Python 3.11+, creates `.venv` if missing, installs missing/incompatible Python dependencies, creates `.env` only when absent, installs frontend dependencies when needed, and rebuilds the frontend when its source changes. The launcher shows four setup stages and a compact disk-and-roots terminal mark. ANSI colors are enabled only for interactive terminals; set `NO_COLOR=1` to disable them. Repeat launches reuse the prepared environment without network access. Existing `.env`, user files and databases are preserved. It works when invoked from another directory, including project paths containing spaces.
 
 Python itself must already be installed. Node.js and npm are required to build the frontend; once the build is prepared, startup does not require Node.js. If a required system runtime is missing, the script prints an actionable message rather than modifying the operating system.
 
@@ -135,7 +139,7 @@ Copy `.env.example` to `.env`. Relative paths are resolved from the project dire
 | `PORT` | `8000` | HTTP port |
 | `STORAGE_PATH` | `./storage` | Browsable user files |
 | `DATABASE_PATH` | `./data/rootdrive.db` | SQLite metadata |
-| `INTERNAL_PATH` | `./data/internal` | Trash and temporary upload staging |
+| `INTERNAL_PATH` | `./data/internal` | Trash, versions, upload staging, preview cache and ZIP exports |
 | `AUTH_ENABLED` | `false` | Require login |
 | `ENABLE_PUBLIC_SHARES` | `false` | Enable anonymous file download links |
 | `COOKIE_SECURE` | `false` | Restrict session cookies to HTTPS when true |
@@ -183,13 +187,21 @@ Tokens contain 256 bits of randomness and only hashes are persisted. The full li
 
 ## Uploads and storage
 
-Uploads use FastAPI `UploadFile` multipart parsing. Data is copied in 1 MiB chunks to a staging directory, then written with exclusive creation to the destination. Conflicts return HTTP 409 rather than overwriting. A failed batch rolls back files created by that request and removes its staging files. Browser uploads send files individually, show transfer progress and report per-file errors.
+The browser uploads files serially in chunks up to 4 MiB, writing each acknowledged offset to SQLite. Pause stops the current request and leaves completed chunks on the server. Resume refreshes the server offset before continuing. Lost connections retry up to three times and can be resumed manually. Pending uploads remain on disk across browser/server restarts; after reopening the page, use the file-selection button in Transfers to select the same original. Its name, size, modification time and first saved 64 KiB are checked before continuation. This prefix check is not a full-file content hash; keep the original file unchanged. Cancel removes only that unfinished upload. Closing a browser cannot retain its local file handle automatically.
 
-The default limit is 2 GiB per file, with at most 20 files in an API request. The browser queues larger selections as individual requests. An aggregate request-body guard also caps incoming requests. Multipart parsing may spool an oversized file to disk before the per-file validation runs; allow sufficient temporary space and configure a reverse-proxy request limit where appropriate. Starlette may use the operating system temporary directory in addition to RootDrive staging.
+Upload folder uses the browser directory picker. Dragging a folder uses directory-entry APIs where available. Relative paths are validated on the server and missing parent directories are created when files complete. Existing folders merge. Empty directories are not transmitted. On older browsers, upload individual files instead.
 
-A crash or power failure can leave partial staging files or an unfinished metadata transition. Files in `data/internal/uploads` can be inspected and removed while the server is stopped. Trash is never automatically emptied. Back up both storage and the data directory with the server stopped for a consistent snapshot.
+The default limit is 2 GiB per file. Filename conflicts never silently overwrite: the Transfers action **Replace & keep previous version** requires an explicit choice. Alternatively, open a file's **Version history → Upload new version**. Replacement checks that the original has not changed since the transfer started. Replacing or restoring a file saves the current complete contents in `INTERNAL_PATH/versions`. Versions are full copies, not deltas. Renames, moves, trash and restoration retain their association; permanently deleting a trash item also removes its saved versions. Files changed outside RootDrive do not generate versions. Versions and trash are never automatically emptied.
 
-Storage totals are scanned with streaming directory iteration and cached for 30 seconds. API file mutations invalidate the cache. RootDrive file size excludes trash; disk usage includes the OS, other applications, staging and trash.
+The multipart `POST /api/files/upload` API remains available for integrations. It uses FastAPI `UploadFile`, copies in 1 MiB chunks, accepts up to 20 files per request and rolls back files from a failed batch. Multipart parsing can spool data into the operating system temporary directory before per-file validation; leave enough temporary disk space. The browser's resumable route bounds each request separately and does not spool an entire large file in memory.
+
+Bulk selection applies to the displayed page (60 entries), with up to 200 explicit paths per batch API request. Selected descendants are ignored when their parent is also selected. Bulk move and trash validate paths first and roll back completed moves on a handled failure. Folder and multi-file ZIPs are prepared on disk with bounded-memory copying, rather than assembled as browser blobs. Temporary ZIP downloads expire after one hour; expired ZIP files are cleaned when another archive is created. Archive preparation holds the application filesystem lock, so very large ZIPs can delay other file requests. Audio/video playback uses the browser's native codecs; unsupported formats can still be downloaded. There is no transcoding.
+
+Favorites belong to the signed-in account, or to the shared workspace when sign-in is off. Tags, folder colors, versions and user files are shared. Metadata follows changes made through the API; external edits are not indexed or monitored. API renames and moves update active share links; replacing a shared file causes its existing link to download the current contents at that path.
+
+Storage scans use streaming directory iteration and a 30-second cache. File mutations invalidate the cache. The dashboard separates active files, Trash, Versions, Temporary (unfinished uploads, preview cache and generated ZIPs), System and free disk space. **System** is the remaining used disk space after RootDrive's file and internal-data totals are subtracted, and includes the OS, apps and other files. File sizes are logical bytes; filesystem compression, sparse files, clones and APFS accounting can make this an estimate of physical allocation. Keep storage and internal data on the same filesystem for meaningful disk comparisons and rename-based operations.
+
+A crash or power failure can leave an unfinished filesystem/metadata transition. Resumable uploads truncate any unacknowledged tail to their recorded offset on the next chunk. Missing or damaged staging requires cancelling and restarting that upload. Inspect orphaned data with the server stopped. Back up storage, the SQLite database and internal data together while the server is stopped for a consistent snapshot.
 
 ## Photo previews and EXIF
 
@@ -212,11 +224,14 @@ backend/app/
     files.py            Files, folders, trash, search and storage endpoints
     auth.py             Login, logout, sessions and administrator-created users
     shares.py           Share creation, revocation and public downloads
+    uploads.py          Persistent upload jobs, bounded chunks and completion
+    workspace.py        Favorites, tags, bulk actions, ZIPs, versions and media
   services/
     filesystem.py       Path validation, listing, streaming downloads and statistics
     security.py         Argon2 verification, session lookup and CSRF enforcement
     previews.py         Bounded photo conversion and derived thumbnail cache
     metadata.py         Read-only EXIF extraction and display formatting
+    workspace.py        Stable item metadata, version snapshots and batch rollback
 backend/tests/          Isolated API integration tests
 frontend/src/           React, TypeScript, local API client and illustrated UI
 frontend/public/assets/ Original locally hosted image assets
@@ -226,8 +241,8 @@ run.py                  Project entrypoint
 Three Python technological areas for the university demonstration:
 
 1. **Web backend and REST API.** FastAPI uses an application factory, dependency-based access checks, Pydantic input schemas and structured errors. Uvicorn runs the ASGI application. OpenAPI is generated at `/docs`.
-2. **Filesystem operations and storage management.** `pathlib`, `os`, `stat`, `shutil`, `heapq` and chunked I/O implement isolation, bounded-memory listing, uploads, downloads, rename/move, trash and disk statistics. Symbolic links are excluded, path components are validated and downloads open with `O_NOFOLLOW`.
-3. **SQLite database and persistence.** SQLAlchemy stores users, sessions, trash records and share metadata. Each request uses its own session. SQLite runs in WAL mode with foreign keys enabled and a busy timeout. File contents remain on disk instead of becoming database blobs.
+2. **Filesystem operations and storage management.** `pathlib`, `os`, `stat`, `shutil`, `heapq` and chunked I/O implement isolation, bounded-memory listing, uploads, downloads, rename/move, trash, ZIP archives, version snapshots and disk statistics. Symbolic links are excluded, path components are validated and downloads open with `O_NOFOLLOW`.
+3. **SQLite database and persistence.** SQLAlchemy stores users, sessions, trash records, shares, stable item identities, favorites, tags, versions, resumable upload jobs and ZIP export metadata. Each request uses its own session. SQLite runs in WAL mode with foreign keys enabled and a busy timeout. File contents remain on disk instead of becoming database blobs.
 
 File operations use a reentrant lock to coordinate requests in a single server process. Rename and trash metadata updates attempt filesystem rollback if the database commit fails. Filesystem changes and SQLite commits cannot be one atomic transaction across a power failure.
 
@@ -252,7 +267,24 @@ All private endpoints require a session when authentication is enabled. State-ch
 | GET | `/api/trash` | Paginated trash records |
 | POST | `/api/trash/restore` | JSON trash `id` |
 | DELETE | `/api/trash` | JSON trash `id`, permanent removal |
-| GET | `/api/storage/stats` | Cached file totals and disk usage |
+| GET | `/api/storage/stats` | Cached file/internal-data totals and disk usage |
+| GET, POST | `/api/uploads` | List own unfinished uploads / create a job |
+| GET, PUT, DELETE | `/api/uploads/{id}` | Status / append binary chunk at `offset` / cancel |
+| POST | `/api/uploads/{id}/verify` | Check reselected file prefix |
+| POST | `/api/uploads/{id}/complete` | Install complete upload, optionally preserve a version |
+| GET | `/api/collection` | Paginated favorite/tag filter with search and sorting |
+| POST | `/api/favorites` | Set favorite state for explicit paths |
+| GET, POST | `/api/tags` | List/create workspace tags |
+| PATCH, DELETE | `/api/tags/{id}` | Rename/recolor or remove a tag |
+| POST | `/api/files/tags` | Assign tags and an optional folder color |
+| POST | `/api/files/batch/move` | Move selected paths |
+| POST | `/api/files/batch/trash` | Trash selected paths |
+| POST | `/api/files/archive` | Create ZIP for selected paths |
+| GET | `/api/exports/{id}` | Download own unexpired ZIP |
+| GET | `/api/files/versions?path=...` | List previous versions |
+| GET | `/api/versions/{id}/download` | Download saved contents |
+| POST | `/api/versions/{id}/restore` | Restore while preserving current contents |
+| GET, HEAD | `/api/files/media?path=...` | Protected audio/video playback with byte ranges |
 | GET | `/api/auth/me` | Account and feature flags |
 | POST | `/api/auth/login` | Login with `username`, `password` |
 | POST | `/api/auth/logout` | Revoke current session |
@@ -271,7 +303,7 @@ pytest -q
 npm --prefix frontend run build
 ```
 
-Tests use temporary storage directories and temporary SQLite databases, never your workspace files. Coverage includes file lifecycle, conflicts, restoration, permanent deletion, unsafe names, traversal, symlink escapes, streaming upload limits, failed-batch cleanup, search/pagination, previews, stats, optional authentication, CSRF, administrator restrictions, public sharing, revocation/expiry and restart persistence.
+Tests use temporary storage directories and temporary SQLite databases, never your workspace files. Coverage includes file lifecycle, conflicts, restoration, permanent deletion, unsafe names, traversal, symlink escapes, streaming upload limits, failed-batch cleanup, search/pagination, previews, stats, optional authentication, CSRF, administrator restrictions, public sharing, revocation/expiry and restart persistence. Additional tests cover resumable folder transfers across restart, stale offsets, source-prefix checks, cancelled/empty uploads, chunk limits, overwrite conflicts, original-file changes, version restore, rollback on database failure, metadata lifecycle, tag filtering, batch overlap/conflicts, ZIP content/symlink isolation, media ranges, storage breakdown and per-account transfer/favorite/export access.
 
 ## Raspberry Pi and older hardware
 
@@ -289,21 +321,20 @@ Install a supported Node.js version to build locally, or copy the project and a 
 - One shared workspace; no private per-user folders or granular permissions.
 - One server worker. Locks do not coordinate separate processes.
 - Designed for a trusted LAN with server-owned storage. Do not let untrusted local users mutate storage concurrently. Final download opens reject symlinks, but parent-path validation and mutations are not fully descriptor-relative; hostile external filesystem changes can create races.
-- No resumable uploads, folder uploads, bulk selection actions or folder ZIP downloads.
-- No video/audio playback, office-document conversion or OCR. Native image formats and PDFs preview directly; HEIC/HEIF and AVIF have derived JPEG previews.
-- Downloads stream without implementing HTTP byte-range requests. Large PDF behavior depends on the browser; download is always available.
+- Office-document conversion and OCR are not implemented. Audio/video support depends on browser codecs. Native images and PDFs preview directly; HEIC/HEIF and AVIF have derived JPEG previews.
+- Media playback, saved-version downloads and generated ZIPs support byte ranges. Original attachment downloads stream sequentially; large PDF inline behavior depends on the browser.
 - Directory scanning, recursive search and initial storage stats can take time on very large collections. There is no background indexer.
-- The move picker shows the first 200 entries in a folder, with folders sorted first.
+- The move picker is paginated. Bulk selection covers the current page, not every result in a large search.
 - The first administrator is created through the CLI. Further accounts are managed in Settings by administrators. Settings does not edit server environment variables.
-- No full activity history, synchronization client, versioning or automated backup.
+- No full activity history, synchronization client or automated backup.
 - No antivirus scanning or content sanitization. Downloads are attachments; inline previews are limited to supported image formats and PDFs.
 - Interrupted operations after a crash need administrator inspection. SQLite and filesystem changes are not power-loss atomic.
 - Native Windows, real phone hardware, Raspberry Pi hardware and reverse-proxy deployments have not been verified.
 
 ## Planned improvements
 
-Resumable uploads, indexed search for large libraries, file versioning, bulk actions, a paginated move picker, richer account administration, download ranges and stronger descriptor-relative filesystem operations. These are not exposed as unfinished controls in the interface.
+Indexed search for large libraries, private per-user folders/permissions, scheduled backups, richer account administration, original-file download ranges and stronger descriptor-relative filesystem operations. These are not exposed as unfinished controls in the interface.
 
 ## Design assets
 
-The illustrated icons and application mark were created with ImageGen and are served locally. The RootDrive mark joins a storage drive with branching roots. The asset manifest in `frontend/public/assets/README.md` records generation and cleanup. Lucide provides the small action icons. Source files contain no comments or docstrings.
+The illustrated icons and application mark were created with ImageGen and are served locally. The RootDrive mark joins three flat 2D HDD glyphs with one branching root. The asset manifest in `frontend/public/assets/README.md` records generation and cleanup. Lucide provides the small action icons. Source files contain no comments or docstrings.

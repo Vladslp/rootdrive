@@ -8,921 +8,762 @@ import {
 } from "react";
 import {
   ArrowDown,
-  ArrowDownToLine,
-  ArrowLeft,
-  ArrowRight,
   ArrowUp,
   Check,
-  CheckCircle2,
-  ChevronDown,
+  CheckSquare,
+  ChevronLeft,
   ChevronRight,
   CircleHelp,
-  CloudUpload,
-  Ellipsis,
-  FolderClosed,
+  Download,
+  FolderInput,
   FolderPlus,
   HardDrive,
+  History,
   Info,
-  Image,
   LayoutGrid,
-  Link2,
+  Link,
   List,
   Loader2,
   LogOut,
   Menu,
-  MoveRight,
-  Music2,
-  Pencil,
+  Moon,
+  MoreHorizontal,
+  Plus,
   Search,
-  Server,
   Settings,
   ShieldCheck,
+  Star,
+  Sun,
+  Tag as TagIcon,
   Trash2,
-  Undo2,
-  Video,
+  Upload,
   X,
 } from "lucide-react";
 import {
   api,
   bytes,
+  date,
   fileURL,
+  saveURL,
   setCSRF,
-  upload,
   type Account,
   type Entry,
   type Listing,
   type Shared,
   type Stats,
+  type Tag,
 } from "./services/api";
 import { Art, kindOf } from "./components/Art";
-import { FileArtwork, isPhoto } from "./components/FileArtwork";
-import { ImageDetails } from "./components/ImageDetails";
+import { FileArtwork } from "./components/FileArtwork";
+import { Dialog } from "./components/Dialog";
+import {
+  MoveDialog,
+  NameDialog,
+  PreviewDialog,
+  PropertiesDialog,
+  ShareDialog,
+  TagsDialog,
+  VersionsDialog,
+  type Modal,
+} from "./components/FileDialogs";
 import { UsersSettings } from "./components/UsersSettings";
+import { UploadQueue } from "./components/UploadQueue";
+import { droppedFiles, useUploads } from "./hooks/useUploads";
 
-type View = "files" | "shares" | "trash" | "storage" | "settings";
-type Dialog = {
-  kind:
-    | "folder"
-    | "rename"
-    | "delete"
-    | "move"
-    | "share"
-    | "permanent"
-    | "properties";
-  entry?: Entry;
-};
-const date = (value: number) =>
-  new Date(value * 1000).toLocaleDateString("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-function Modal({
-  title,
-  children,
-  close,
-  wide = false,
-}: {
-  title: string;
-  children: ReactNode;
-  close: () => void;
-  wide?: boolean;
-}) {
-  const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const focusable = () =>
-      Array.from(
-        panel.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input, select, a[href], iframe, [tabindex="0"]',
-        ) || [],
-      );
-    const preferred = panel.current?.querySelector<HTMLInputElement>(
-      "input:not([readonly])",
-    );
-    (preferred || focusable()[0])?.focus();
-    const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-      if (event.key === "Tab") {
-        const nodes = focusable();
-        const first = nodes[0];
-        const last = nodes[nodes.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first?.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", key);
-    const old = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", key);
-      document.body.style.overflow = old;
-      previous?.focus();
-    };
-  }, [close]);
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <div
-        ref={panel}
-        className={"modal " + (wide ? "modal-wide" : "")}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-      >
-        <div className="modal-heading">
-          <h2>{title}</h2>
-          <button className="icon-button" onClick={close} aria-label="Close">
-            <X size={20} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
+type View =
+  "files" | "favorites" | "tag" | "shares" | "trash" | "storage" | "settings";
+type Theme = "light" | "dark";
+const pageSize = 60;
+
+function readPreference(name: string, fallback: string) {
+  try {
+    return localStorage.getItem(name) || fallback;
+  } catch {
+    return fallback;
+  }
 }
+function writePreference(name: string, value: string) {
+  try {
+    localStorage.setItem(name, value);
+  } catch {}
+}
+
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
+  const [accountError, setAccountError] = useState("");
   const [view, setView] = useState<View>("files");
   const [path, setPath] = useState("");
-  const [listing, setListing] = useState<Listing>({ items: [], total: 0 });
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [shares, setShares] = useState<Shared[]>([]);
-  const [search, setSearch] = useState("");
+  const [activeTag, setActiveTag] = useState("");
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagManager, setTagManager] = useState(false);
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [recursive, setRecursive] = useState(false);
   const [sort, setSort] = useState("name");
   const [direction, setDirection] = useState("asc");
   const [offset, setOffset] = useState(0);
-  const [layout, setLayout] = useState<"grid" | "list">("grid");
-  const [busy, setBusy] = useState(false);
+  const [listing, setListing] = useState<Listing>({ items: [], total: 0 });
+  const [shares, setShares] = useState<{ items: Shared[]; total: number }>({
+    items: [],
+    total: 0,
+  });
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [statsError, setStatsError] = useState("");
+  const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [selection, setSelection] = useState<string[]>([]);
+  const [layout, setLayout] = useState(
+    readPreference("rootdrive-layout", "grid"),
+  );
+  const [theme, setTheme] = useState<Theme>(
+    document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+  );
   const [sidebar, setSidebar] = useState(false);
-  const [menu, setMenu] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [value, setValue] = useState("");
-  const [dialogError, setDialogError] = useState("");
-  const [preview, setPreview] = useState<Entry | null>(null);
-  const [movePath, setMovePath] = useState("");
-  const [moveFolders, setMoveFolders] = useState<Entry[]>([]);
-  const [shareLink, setShareLink] = useState("");
-  const [progress, setProgress] = useState<{
-    name: string;
-    percent: number;
-    index: number;
-    total: number;
+  const [modal, setModal] = useState<Modal | null>(null);
+  const [context, setContext] = useState<{
+    entry: Entry;
+    x: number;
+    y: number;
   } | null>(null);
+  const [toasts, setToasts] = useState<{ id: number; text: string }[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [loginError, setLoginError] = useState("");
-  const input = useRef<HTMLInputElement>(null);
-  const requestId = useRef(0);
-  const notify = (message: string) => {
-    setToast(message);
-  };
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 4500);
-    return () => clearTimeout(timer);
-  }, [toast]);
+  const dragDepth = useRef(0);
+  const filesInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const replacePath = useRef<string | undefined>(undefined);
+  const mainSearch = useRef<HTMLInputElement>(null);
+  const ready = Boolean(account && (!account.auth_enabled || account.user));
+  const fileView = ["files", "favorites", "tag"].includes(view);
+  const selected = listing.items.filter((item) =>
+    selection.includes(item.path),
+  );
+  const refresh = useCallback(() => setRevision((value) => value + 1), []);
+  const notify = useCallback((text: string) => {
+    const id = Date.now() + Math.random();
+    setToasts((current) => [...current.slice(-2), { id, text }]);
+    window.setTimeout(
+      () => setToasts((current) => current.filter((item) => item.id !== id)),
+      5500,
+    );
+  }, []);
+  const queue = useUploads(ready, refresh);
   const loadAccount = useCallback(async () => {
-    const data = await api<Account>("/auth/me");
-    setAccount(data);
-    setCSRF(data.csrf_token);
-    return data;
+    try {
+      const value = await api<Account>("/auth/me");
+      setCSRF(value.csrf_token);
+      setAccount(value);
+      setAccountError("");
+    } catch (error) {
+      setAccountError((error as Error).message);
+    }
+  }, []);
+  const loadTags = useCallback(async () => {
+    const result = await api<{ items: Tag[] }>("/tags");
+    setTags(result.items);
   }, []);
   useEffect(() => {
-    loadAccount().catch((e) => {
-      setError(e.message);
-      setLoading(false);
-    });
-    const unauthorized = () => {
-      setAccount((a) => (a ? { ...a, user: null } : a));
-    };
-    window.addEventListener("rootdrive:unauthorized", unauthorized);
-    return () =>
-      window.removeEventListener("rootdrive:unauthorized", unauthorized);
+    void loadAccount();
+    const invalid = () => void loadAccount();
+    window.addEventListener("rootdrive:unauthorized", invalid);
+    return () => window.removeEventListener("rootdrive:unauthorized", invalid);
   }, [loadAccount]);
   useEffect(() => {
+    if (ready) void loadTags().catch((error) => notify(error.message));
+  }, [ready, loadTags, notify]);
+  useEffect(() => {
     const timer = setTimeout(() => {
-      setQuery(search);
+      setSearch(query);
       setOffset(0);
-    }, 250);
+    }, 220);
     return () => clearTimeout(timer);
-  }, [search]);
-  const refresh = useCallback(async () => {
-    if (!account || (account.auth_enabled && !account.user)) return;
-    const id = ++requestId.current;
+  }, [query]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    writePreference("rootdrive-theme", theme);
+    document
+      .querySelector("meta[name=theme-color]")
+      ?.setAttribute("content", theme === "dark" ? "#101319" : "#f7f8fb");
+  }, [theme]);
+  useEffect(() => {
+    writePreference("rootdrive-layout", layout);
+  }, [layout]);
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    api<Stats>("/storage/stats")
+      .then((result) => {
+        if (active) {
+          setStats(result);
+          setStatsError("");
+        }
+      })
+      .catch((error) => {
+        if (active) setStatsError(error.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [ready, revision, view === "storage"]);
+  useEffect(() => {
+    if (!ready || (!fileView && view !== "trash" && view !== "shares")) {
+      setLoading(false);
+      return;
+    }
+    let active = true;
     setLoading(true);
     setError("");
-    try {
-      const params = new URLSearchParams({
-        path,
-        q: query,
-        recursive: String(recursive),
-        sort,
-        direction,
-        offset: String(offset),
-        limit: "80",
-      });
-      const [data, space] = await Promise.all([
-        view === "trash"
-          ? api<Listing>("/trash?offset=" + offset)
-          : view === "shares"
-            ? api<{ items: Shared[]; total: number }>(
-                "/shares?offset=" + offset,
-              )
-            : api<Listing>("/files?" + params),
-        api<Stats>("/storage/stats"),
-      ]);
-      if (id !== requestId.current) return;
-      setStats(space);
-      if (view === "shares") {
-        setShares(data.items as Shared[]);
-        setListing({ items: [], total: data.total });
-      } else setListing(data as Listing);
-    } catch (e) {
-      if (id === requestId.current) setError((e as Error).message);
-    } finally {
-      if (id === requestId.current) setLoading(false);
-    }
-  }, [account, view, path, query, recursive, sort, direction, offset]);
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [menu]);
-  useEffect(() => {
-    if (dialog?.kind === "move")
-      api<Listing>(
-        "/files?" + new URLSearchParams({ path: movePath, limit: "200" }),
-      )
-        .then((result) =>
-          setMoveFolders(result.items.filter((item) => item.type === "folder")),
-        )
-        .catch((e) => setDialogError(e.message));
-  }, [dialog, movePath]);
-  const navigate = (next: string) => {
-    setPath(next);
-    setView("files");
-    setSearch("");
-    setQuery("");
-    setOffset(0);
-    setSelected(null);
-  };
-  const changeView = (next: View) => {
-    setView(next);
-    setSidebar(false);
-    setOffset(0);
-    setSearch("");
-    setSelected(null);
-  };
-  const openDialog = (kind: Dialog["kind"], entry?: Entry) => {
-    setMenu(null);
-    setDialog({ kind, entry });
-    setValue(
-      kind === "rename" ? entry?.name || "" : kind === "share" ? "24" : "",
-    );
-    setDialogError("");
-    setShareLink("");
-    setMovePath("");
-  };
-  const closeDialog = useCallback(() => {
-    setDialog(null);
-    setDialogError("");
-  }, []);
-  const closePreview = useCallback(() => setPreview(null), []);
-  const perform = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!dialog) return;
-    setBusy(true);
-    setDialogError("");
-    try {
-      const entry = dialog.entry;
-      if (dialog.kind === "folder")
-        await api("/folders", "POST", { path, name: value });
-      if (dialog.kind === "rename")
-        await api("/files/rename", "PATCH", { path: entry?.path, name: value });
-      if (dialog.kind === "delete")
-        await api("/files", "DELETE", { path: entry?.path });
-      if (dialog.kind === "move")
-        await api("/files/move", "POST", {
-          path: entry?.path,
-          destination: movePath,
-        });
-      if (dialog.kind === "permanent")
-        await api("/trash", "DELETE", { id: entry?.id });
-      if (dialog.kind === "share") {
-        const result = await api<{ url: string }>("/shares", "POST", {
-          path: entry?.path,
-          expires_hours: Number(value) || null,
-        });
-        setShareLink(window.location.origin + result.url);
-        await refresh();
-        return;
-      }
-      closeDialog();
-      notify(
-        dialog.kind === "delete"
-          ? "Moved to trash"
-          : dialog.kind === "folder"
-            ? "Folder created"
-            : "All done",
-      );
-      await refresh();
-    } catch (e) {
-      setDialogError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const doUpload = async (files: FileList | File[] | null) => {
-    if (!files?.length || progress) return;
-    const batch = Array.from(files);
-    let successes = 0;
-    for (let i = 0; i < batch.length; i++) {
-      const file = batch[i];
-      if (file.size > (account?.max_upload_size_mb || 2048) * 1024 * 1024) {
-        notify(file.name + " exceeds the upload limit");
-        continue;
-      }
-      setProgress({
-        name: file.name,
-        percent: 0,
-        index: i + 1,
-        total: batch.length,
-      });
-      try {
-        await upload(file, path, (percent) =>
-          setProgress({
-            name: file.name,
-            percent,
-            index: i + 1,
-            total: batch.length,
-          }),
-        );
-        successes++;
-      } catch (e) {
-        notify(file.name + ": " + (e as Error).message);
-      }
-    }
-    setProgress(null);
-    if (input.current) input.current.value = "";
-    if (successes === batch.length)
-      notify(successes === 1 ? "File uploaded" : `${successes} files uploaded`);
-    await refresh();
-  };
-  const openEntry = (entry: Entry) => {
-    if (entry.type === "folder") navigate(entry.path);
-    else if (
-      /^(image\/(jpeg|png|webp|gif|heic|heif|avif)|application\/pdf)$/.test(
-        entry.mime || "",
-      )
-    )
-      setPreview(entry);
-    else window.location.assign(fileURL(entry));
-  };
-  const restore = async (entry: Entry) => {
-    try {
-      await api("/trash/restore", "POST", { id: entry.id });
-      notify(
-        "Restored to " +
-          (entry.path.includes("/")
-            ? entry.path.split("/").slice(0, -1).join("/")
-            : "My files"),
-      );
-      refresh();
-    } catch (e) {
-      notify((e as Error).message);
-    }
-  };
-  const revoke = async (id: string) => {
-    try {
-      await api("/shares/" + id, "DELETE");
-      notify("Link revoked");
-      refresh();
-    } catch (e) {
-      notify((e as Error).message);
-    }
-  };
-  const login = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setBusy(true);
-    setLoginError("");
-    const data = new FormData(event.currentTarget);
-    try {
-      await api("/auth/login", "POST", {
-        username: data.get("username"),
-        password: data.get("password"),
-      });
-      await loadAccount();
-    } catch (e) {
-      setLoginError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const logout = async () => {
-    try {
-      await api("/auth/logout", "POST");
-      await loadAccount();
-    } catch (e) {
-      notify((e as Error).message);
-    }
-  };
-  if (account?.auth_enabled && !account.user)
-    return (
-      <main className="login-page">
-        <div className="login-card">
-          <div className="brand">
-            <span className="brand-icon">
-              <img src="/assets/app-icon.png" alt="" />
-            </span>
-            RootDrive<span className="brand-dot">.</span>
-          </div>
-          <Art kind="drive" className="login-art" />
-          <h1>Welcome to your space.</h1>
-          <p>Your files, right where you left them.</p>
-          <form onSubmit={login}>
-            <label>
-              Username
-              <input
-                name="username"
-                autoComplete="username"
-                required
-                autoFocus
-              />
-            </label>
-            <label>
-              Password
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </label>
-            {loginError && (
-              <div className="error-text" role="alert">
-                {loginError}
-              </div>
-            )}
-            <button className="button primary" disabled={busy}>
-              {busy ? (
-                <Loader2 className="spin" size={18} />
-              ) : (
-                <ArrowRight size={18} />
-              )}{" "}
-              Sign in
-            </button>
-          </form>
-          <span className="login-foot">
-            <ShieldCheck size={14} /> One shared workspace. Hosted by you.
-          </span>
-        </div>
-      </main>
-    );
-  const title = {
-    files: "My files",
-    shares: "Shared links",
-    trash: "Trash",
-    storage: "Storage",
-    settings: "Settings",
-  }[view];
-  const entries = listing.items;
-  const folders = entries.filter((entry) => entry.type === "folder");
-  const documents = entries.filter((entry) => entry.type !== "folder");
-  const canUpload = view === "files";
-  const breadcrumbs = path ? path.split("/") : [];
-  const menuActions = (entry: Entry) => (
-    <div
-      className="context-menu"
-      onClick={(e) => e.stopPropagation()}
-      role="menu"
-    >
-      <button
-        role="menuitem"
-        onClick={() => {
-          setMenu(null);
-          openEntry(entry);
-        }}
-      >
-        <FolderClosed size={16} />
-        {entry.type === "folder" ? "Open folder" : "Open file"}
-      </button>
-      {entry.type === "file" && (
-        <a role="menuitem" href={fileURL(entry)} onClick={() => setMenu(null)}>
-          <ArrowDownToLine size={16} />
-          Download
-        </a>
-      )}
-      <button role="menuitem" onClick={() => openDialog("rename", entry)}>
-        <Pencil size={16} />
-        Rename
-      </button>
-      <button role="menuitem" onClick={() => openDialog("move", entry)}>
-        <MoveRight size={16} />
-        Move to…
-      </button>
-      <button role="menuitem" onClick={() => openDialog("properties", entry)}>
-        <Info size={16} />
-        Properties
-      </button>
-      {account?.shares_enabled && entry.type === "file" && (
-        <button role="menuitem" onClick={() => openDialog("share", entry)}>
-          <Link2 size={16} />
-          Share link
-        </button>
-      )}
-      <hr />
-      <button
-        role="menuitem"
-        className="danger-text"
-        onClick={() => openDialog("delete", entry)}
-      >
-        <Trash2 size={16} />
-        Move to trash
-      </button>
-    </div>
-  );
-  const entryCard = (entry: Entry) => (
-    <div
-      key={entry.path}
-      className={
-        "file-card " +
-        (entry.type === "folder" ? "folder-card " : "") +
-        (selected === entry.path ? "selected" : "")
-      }
-      onClick={() => setSelected(entry.path)}
-      onDoubleClick={() => view === "files" && openEntry(entry)}
-      onContextMenu={(e) => {
-        if (view === "files") {
-          e.preventDefault();
-          setMenu(entry.path);
+    setSelection([]);
+    const params = new URLSearchParams({
+      path,
+      q: search,
+      recursive: String(recursive),
+      sort,
+      direction,
+      offset: String(offset),
+      limit: String(pageSize),
+    });
+    if (view === "favorites") params.set("favorite", "true");
+    if (view === "tag") params.set("tag", activeTag);
+    const endpoint =
+      view === "trash"
+        ? "/trash"
+        : view === "shares"
+          ? "/shares"
+          : view === "files"
+            ? "/files"
+            : "/collection";
+    api<Listing & { items: Shared[] }>(endpoint + "?" + params)
+      .then((result) => {
+        if (active) {
+          if (view === "shares") setShares(result);
+          else setListing(result);
+          if (!result.items.length && offset && result.total <= offset)
+            setOffset(Math.max(0, offset - pageSize));
         }
-      }}
+      })
+      .catch((error) => {
+        if (active) setError(error.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    ready,
+    view,
+    path,
+    search,
+    recursive,
+    sort,
+    direction,
+    offset,
+    activeTag,
+    revision,
+  ]);
+  useEffect(() => {
+    folderInput.current?.setAttribute("webkitdirectory", "");
+  }, [ready]);
+  useEffect(() => {
+    if (!context) return;
+    const close = () => setContext(null);
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", key);
+    };
+  }, [context]);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (
+        modal ||
+        tagManager ||
+        (event.target as HTMLElement)?.closest(
+          "input,textarea,select,[contenteditable]",
+        )
+      )
+        return;
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "a" &&
+        fileView
+      ) {
+        event.preventDefault();
+        setSelection(listing.items.map((item) => item.path));
+      }
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "k" &&
+        fileView
+      ) {
+        event.preventDefault();
+        mainSearch.current?.focus();
+      }
+      if (event.key === "Escape") {
+        setSelection([]);
+        setSidebar(false);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [modal, tagManager, fileView, listing.items]);
+  function navigate(next: View, destination = "", tag = "") {
+    setView(next);
+    setPath(destination);
+    setActiveTag(tag);
+    setOffset(0);
+    setQuery("");
+    setSearch("");
+    setSelection([]);
+    setSidebar(false);
+    setContext(null);
+  }
+  function done(message = "Saved") {
+    setModal(null);
+    setSelection([]);
+    refresh();
+    notify(message);
+  }
+  async function perform(action: () => Promise<unknown>, message: string) {
+    setBusy(true);
+    try {
+      await action();
+      done(message);
+    } catch (error) {
+      notify((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function open(entry: Entry) {
+    if (entry.type === "folder") navigate("files", entry.path);
+    else setModal({ action: "preview", entries: [entry] });
+  }
+  async function download(entries: Entry[]) {
+    if (entries.length === 1 && entries[0].type === "file") {
+      saveURL(fileURL(entries[0]));
+      return;
+    }
+    setBusy(true);
+    notify("Preparing ZIP…");
+    try {
+      const result = await api<{ url: string }>("/files/archive", "POST", {
+        paths: entries.map((item) => item.path),
+      });
+      saveURL(result.url);
+    } catch (error) {
+      notify((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function favorite(entry: Entry) {
+    try {
+      await api("/favorites", "POST", {
+        paths: [entry.path],
+        favorite: !entry.favorite,
+      });
+      refresh();
+    } catch (error) {
+      notify((error as Error).message);
+    }
+  }
+  function chooseUpload(folder = false, replacement?: string) {
+    replacePath.current = replacement;
+    if (folder) folderInput.current?.click();
+    else filesInput.current?.click();
+  }
+  function chooseAction(action: Modal["action"], entries: Entry[]) {
+    setContext(null);
+    setModal({ action, entries });
+  }
+  const title =
+    view === "tag"
+      ? tags.find((tag) => tag.id === activeTag)?.name || "Tag"
+      : (
+          {
+            files: "My files",
+            favorites: "Favorites",
+            shares: "Shared links",
+            trash: "Trash",
+            storage: "Storage",
+            settings: "Settings",
+          } as Record<string, string>
+        )[view];
+  if (!account)
+    return (
+      <div className="connection-screen">
+        <img src="/assets/app-icon.png" alt="RootDrive" />
+        <h1>RootDrive</h1>
+        {accountError ? (
+          <>
+            <p className="error-text">{accountError}</p>
+            <button className="button primary" onClick={loadAccount}>
+              Try again
+            </button>
+          </>
+        ) : (
+          <Loader2 className="spin" />
+        )}
+      </div>
+    );
+  if (account.auth_enabled && !account.user)
+    return <Login connected={loadAccount} theme={theme} setTheme={setTheme} />;
+  const nav = (target: View, label: string, icon: ReactNode) => (
+    <button
+      key={target}
+      className={"nav-link " + (view === target ? "active" : "")}
+      onClick={() => navigate(target)}
     >
-      <div className="card-art-wrap">
+      {icon}
+      <span>{label}</span>
+      {view === target && <i />}
+    </button>
+  );
+  const contextEntry = context?.entry;
+  return (
+    <div className="app-shell">
+      <aside className={"sidebar " + (sidebar ? "sidebar-open" : "")}>
         <button
-          className="card-open"
-          onClick={() => view === "files" && openEntry(entry)}
-          aria-label={"Open " + entry.name}
+          className="brand"
+          onClick={() => navigate("files")}
+          aria-label="RootDrive home"
         >
-          <FileArtwork entry={entry} disabled={view !== "files"} />
+          <img className="brand-logo" src="/assets/app-icon.png" alt="" />
+          <span>
+            RootDrive<span className="brand-dot">.</span>
+          </span>
         </button>
-        {view === "files" && (
-          <div className="card-menu">
+        <button
+          className="button primary sidebar-upload"
+          onClick={() => chooseUpload()}
+        >
+          <Plus size={20} />
+          Upload files
+        </button>
+        <nav aria-label="Main navigation">
+          {nav("files", "My files", <HardDrive size={19} />)}
+          {nav("favorites", "Favorites", <Star size={19} />)}
+          {account.shares_enabled &&
+            nav("shares", "Shared links", <Link size={19} />)}
+          {nav("trash", "Trash", <Trash2 size={19} />)}
+        </nav>
+        <div className="sidebar-tags">
+          <div className="sidebar-label">
+            <span>Tags</span>
             <button
               className="icon-button"
-              aria-label={"Actions for " + entry.name}
-              aria-expanded={menu === entry.path}
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenu(menu === entry.path ? null : entry.path);
+              aria-label="Manage tags"
+              onClick={() => {
+                setTagManager(true);
+                setSidebar(false);
               }}
             >
-              <Ellipsis size={19} />
+              <Plus size={15} />
             </button>
-            {menu === entry.path && menuActions(entry)}
           </div>
-        )}
-      </div>
-      <div className="file-card-bottom">
-        <button
-          className="file-name"
-          title={entry.name}
-          onClick={() => view === "files" && openEntry(entry)}
-        >
-          {entry.name}
-        </button>
-        <div className="file-meta">
-          <span>{entry.type === "folder" ? "Folder" : bytes(entry.size)}</span>
-          <span>{date(entry.modified)}</span>
+          {tags.slice(0, 12).map((tag) => (
+            <button
+              key={tag.id}
+              className={
+                "nav-link tag-link " +
+                (view === "tag" && activeTag === tag.id ? "active" : "")
+              }
+              onClick={() => navigate("tag", "", tag.id)}
+            >
+              <i className={"tag-dot " + tag.color} />
+              <span>{tag.name}</span>
+            </button>
+          ))}
+          {!tags.length && (
+            <button
+              className="add-first-tag"
+              onClick={() => setTagManager(true)}
+            >
+              <TagIcon size={15} />
+              Create tag
+            </button>
+          )}
+          {tags.length > 12 && (
+            <button className="text-button" onClick={() => setTagManager(true)}>
+              Manage all tags
+            </button>
+          )}
         </div>
-        {query && <small className="result-path">{entry.path}</small>}
-        {view === "trash" && (
-          <div className="trash-actions">
-            <button onClick={() => restore(entry)}>
-              <Undo2 size={15} />
-              Restore
-            </button>
-            <button
-              className="danger-text"
-              onClick={() => openDialog("permanent", entry)}
-              aria-label={"Delete permanently " + entry.name}
-            >
-              <Trash2 size={15} />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-  return (
-    <div
-      className="app-shell"
-      onDragOver={(e) => {
-        e.preventDefault();
-        if (canUpload && e.dataTransfer.types.includes("Files"))
-          setDragging(true);
-      }}
-    >
-      <input
-        ref={input}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={(e) => doUpload(e.target.files)}
-      />
-      {sidebar && (
-        <div className="sidebar-scrim" onClick={() => setSidebar(false)} />
-      )}
-      <aside className={"sidebar " + (sidebar ? "sidebar-open" : "")}>
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("");
-            setSidebar(false);
-          }}
-        >
-          <span className="brand-icon">
-            <img src="/assets/app-icon.png" alt="" />
-          </span>
-          RootDrive<span className="brand-dot">.</span>
-        </a>
-        <div className="workspace-label">PERSONAL WORKSPACE</div>
-        <nav aria-label="Main navigation">
-          <button
-            className={view === "files" ? "active" : ""}
-            onClick={() => {
-              changeView("files");
-              navigate("");
-            }}
-          >
-            <FolderClosed size={19} />
-            My files
-            <ChevronRight className="nav-chevron" size={15} />
-          </button>
-          {account?.shares_enabled && (
-            <button
-              className={view === "shares" ? "active" : ""}
-              onClick={() => changeView("shares")}
-            >
-              <Link2 size={19} />
-              Shared links
-            </button>
-          )}
-          <button
-            className={view === "trash" ? "active" : ""}
-            onClick={() => changeView("trash")}
-          >
-            <Trash2 size={19} />
-            Trash
-          </button>
-        </nav>
-        <div className="sidebar-divider" />
-        <div className="workspace-label">YOUR SPACE</div>
-        <nav>
-          <button
-            className={view === "storage" ? "active" : ""}
-            onClick={() => changeView("storage")}
-          >
-            <HardDrive size={19} />
-            Storage
-          </button>
-          <button
-            className={view === "settings" ? "active" : ""}
-            onClick={() => changeView("settings")}
-          >
-            <Settings size={19} />
-            Settings
-          </button>
-        </nav>
         <div className="sidebar-bottom">
-          <div className="storage-mini">
-            <div className="storage-mini-label">
+          {nav("storage", "Storage", <HardDrive size={19} />)}
+          {stats && (
+            <button
+              className="sidebar-storage"
+              onClick={() => navigate("storage")}
+            >
+              <div className="disk-meter">
+                <i style={{ width: stats.disk_percent + "%" }} />
+              </div>
               <span>
-                <HardDrive size={15} />
-                Local storage
+                <strong>{bytes(stats.disk_free)}</strong> free of{" "}
+                {bytes(stats.disk_total)}
               </span>
-              <span>{stats?.disk_percent || 0}%</span>
-            </div>
-            <div className="usage-track">
-              <span style={{ width: (stats?.disk_percent || 0) + "%" }} />
-            </div>
-            <p>{bytes(stats?.disk_free || 0)} available</p>
-            <button onClick={() => changeView("storage")}>
-              View storage <ArrowRight size={14} />
-            </button>
-          </div>
-          {account?.user && (
-            <button className="logout" onClick={logout}>
-              <LogOut size={16} />
-              Sign out · {account.user.username}
             </button>
           )}
+          {nav("settings", "Settings", <Settings size={19} />)}
+          <div className="sidebar-version">
+            <span className="status-dot" />
+            RootDrive <span>MVP 1.0.0</span>
+          </div>
         </div>
       </aside>
-      <div className="main-shell">
+      {sidebar && (
+        <button
+          className="sidebar-scrim"
+          aria-label="Close navigation"
+          onClick={() => setSidebar(false)}
+        />
+      )}
+      <main
+        className={"main " + (dragging ? "is-dragging" : "")}
+        onDragEnter={(event) => {
+          if (view === "files" && event.dataTransfer.types.includes("Files")) {
+            event.preventDefault();
+            dragDepth.current++;
+            setDragging(true);
+          }
+        }}
+        onDragOver={(event) => {
+          if (view === "files" && event.dataTransfer.types.includes("Files")) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDragLeave={(event) => {
+          if (view === "files") {
+            event.preventDefault();
+            dragDepth.current--;
+            if (dragDepth.current <= 0) setDragging(false);
+          }
+        }}
+        onDrop={async (event) => {
+          event.preventDefault();
+          dragDepth.current = 0;
+          setDragging(false);
+          if (view !== "files") return;
+          try {
+            const sources = await droppedFiles(event.dataTransfer);
+            if (sources.length) queue.add(sources, path);
+            else notify("No files found. Empty folders are not uploaded.");
+          } catch (error) {
+            notify((error as Error).message);
+          }
+        }}
+      >
         <header className="topbar">
-          <button
-            className="icon-button mobile-menu"
-            aria-label="Open navigation"
-            onClick={() => setSidebar(true)}
-          >
-            <Menu size={22} />
-          </button>
-          <div className="searchbox">
-            <Search size={19} />
-            <input
-              aria-label="Search files"
-              placeholder="Search your files…"
-              value={search}
-              onChange={(e) => {
-                if (view !== "files") changeView("files");
-                setSearch(e.target.value);
-              }}
-            />
-            {search ? (
-              <button aria-label="Clear search" onClick={() => setSearch("")}>
-                <X size={16} />
-              </button>
-            ) : (
-              <kbd>⌕</kbd>
+          <div className="topbar-left">
+            <button
+              className="icon-button mobile-menu"
+              aria-label="Open navigation"
+              onClick={() => setSidebar(true)}
+            >
+              <Menu size={22} />
+            </button>
+            <span className="topbar-location">{title}</span>
+            {view === "files" && path && (
+              <>
+                <ChevronRight size={14} />
+                <span className="topbar-folder">{path.split("/").pop()}</span>
+              </>
             )}
           </div>
           <div className="topbar-right">
             <button
-              className="icon-button help-button"
-              aria-label="About RootDrive"
-              onClick={() => changeView("settings")}
+              className="icon-button theme-toggle"
+              aria-label={
+                "Switch to " + (theme === "light" ? "dark" : "light") + " theme"
+              }
+              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
             >
-              <CircleHelp size={20} />
+              {theme === "light" ? <Moon size={19} /> : <Sun size={19} />}
             </button>
-            <button
-              className="avatar"
-              aria-label="Workspace settings"
-              onClick={() => changeView("settings")}
-            >
-              {account?.user?.username.slice(0, 1).toUpperCase() || "R"}
-            </button>
+            {account.user && (
+              <button
+                className="account-avatar"
+                aria-label={"Settings for " + account.user.username}
+                onClick={() => navigate("settings")}
+              >
+                {account.user.username[0].toUpperCase()}
+              </button>
+            )}
+            <span className="connection-state">
+              <i />
+              Connected
+            </span>
           </div>
         </header>
-        <main className="content">
-          <div
-            className={
-              "page-heading " + (canUpload ? "files-page-heading" : "")
-            }
-          >
-            {view !== "files" && <h1>{title}</h1>}
-            {canUpload && (
-              <div className="page-actions">
+        <div className="page-content">
+          <div className="page-heading">
+            <div>
+              <span className="eyebrow">ROOTDRIVE</span>
+              <h1>
+                {view === "files" && path ? path.split("/").pop() : title}
+              </h1>
+            </div>
+            {view === "files" && (
+              <div className="heading-actions">
                 <button
                   className="button secondary"
                   aria-label="New folder"
-                  onClick={() => openDialog("folder")}
+                  onClick={() => chooseAction("newfolder", [])}
                 >
-                  <FolderPlus size={18} />
+                  <FolderPlus size={17} />
                   <span>New folder</span>
                 </button>
                 <button
                   className="button primary"
-                  aria-label="Upload files"
-                  disabled={!!progress}
-                  onClick={() => input.current?.click()}
+                  onClick={() => chooseUpload()}
                 >
-                  <CloudUpload size={18} />
-                  <span>Upload files</span>
+                  <Upload size={17} />
+                  Upload
                 </button>
               </div>
             )}
+            {view === "storage" && (
+              <button className="button secondary" onClick={refresh}>
+                <History size={16} />
+                Refresh
+              </button>
+            )}
+            {view === "settings" && account.user && (
+              <button
+                className="button secondary"
+                onClick={() =>
+                  perform(async () => {
+                    await api("/auth/logout", "POST");
+                    await loadAccount();
+                  }, "Signed out")
+                }
+              >
+                <LogOut size={16} />
+                Sign out
+              </button>
+            )}
           </div>
           {view === "files" && (
-            <section
-              className="upload-dropzone"
-              aria-label="File upload area"
-              onDragOver={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setDragging(false);
-                doUpload(event.dataTransfer.files);
-              }}
-            >
-              <Art kind="cloud" />
-              <div>
-                <h2>Drop files here</h2>
-                <button
-                  className="text-button"
-                  disabled={!!progress}
-                  onClick={() => input.current?.click()}
-                >
-                  or browse files <ArrowRight size={14} />
-                </button>
+            <section className="dropzone" aria-label="Upload drop area">
+              <div className="dropzone-symbol">
+                <Upload size={24} strokeWidth={1.6} />
+                <span>+</span>
               </div>
+              <div>
+                <strong>Drag & drop files</strong>
+                <p>
+                  or{" "}
+                  <button onClick={() => chooseUpload()}>browse files</button> ·{" "}
+                  <button onClick={() => chooseUpload(true)}>
+                    upload folder
+                  </button>
+                </p>
+              </div>
+              <span className="dropzone-limit">
+                Up to {bytes(account.max_upload_size_mb * 1024 * 1024)} per file
+              </span>
             </section>
           )}
-          {error && (
-            <div className="error-banner" role="alert">
-              <span>{error}</span>
-              <button
-                onClick={() => {
-                  loadAccount()
-                    .then(refresh)
-                    .catch((e) => setError(e.message));
-                }}
-              >
-                Try again
-              </button>
-            </div>
-          )}
-          {(view === "files" || view === "trash") && (
-            <section className="files-section">
-              <div className="files-toolbar">
-                <div className="breadcrumbs">
-                  <button onClick={() => navigate("")}>
-                    <FolderClosed size={17} />
-                    {view === "trash" ? "Deleted files" : "My files"}
+          {fileView && (
+            <>
+              <section className="file-toolbar">
+                <div className="breadcrumbs" aria-label="Breadcrumbs">
+                  <button
+                    onClick={() => navigate("files")}
+                    aria-label="My files"
+                  >
+                    <HardDrive size={17} />
+                    {!path && view === "files" && <span>All files</span>}
                   </button>
                   {view === "files" &&
-                    breadcrumbs.map((part, index) => (
-                      <span key={index}>
-                        <ChevronRight size={15} />
-                        <button
-                          onClick={() =>
-                            navigate(breadcrumbs.slice(0, index + 1).join("/"))
-                          }
-                        >
-                          {part}
-                        </button>
-                      </span>
-                    ))}
+                    path
+                      .split("/")
+                      .filter(Boolean)
+                      .map((part, index, parts) => (
+                        <span key={index}>
+                          <ChevronRight size={13} />
+                          <button
+                            onClick={() =>
+                              navigate(
+                                "files",
+                                parts.slice(0, index + 1).join("/"),
+                              )
+                            }
+                          >
+                            {part}
+                          </button>
+                        </span>
+                      ))}
+                  {view !== "files" && (
+                    <span>
+                      <ChevronRight size={13} />
+                      {title}
+                    </span>
+                  )}
                 </div>
-                <div className="toolbar-options">
-                  {view === "files" && query && (
-                    <label className="recursive">
-                      <input
-                        type="checkbox"
-                        checked={recursive}
-                        onChange={(e) => setRecursive(e.target.checked)}
-                      />
-                      Subfolders
-                    </label>
+                <div className="search-field">
+                  <Search size={17} />
+                  <input
+                    ref={mainSearch}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Search files"
+                    aria-label="Search files"
+                  />
+                  {query && (
+                    <button
+                      className="icon-button"
+                      aria-label="Clear search"
+                      onClick={() => setQuery("")}
+                    >
+                      <X size={14} />
+                    </button>
                   )}
-                  {view === "files" && (
-                    <>
-                      <label className="sort-select">
-                        <span className="sr-only">Sort files</span>
-                        <select
-                          value={sort}
-                          onChange={(e) => {
-                            setSort(e.target.value);
-                            setOffset(0);
-                          }}
-                        >
-                          <option value="name">Name</option>
-                          <option value="modified">Date modified</option>
-                          <option value="size">Size</option>
-                          <option value="type">Type</option>
-                        </select>
-                        <ChevronDown size={14} />
-                      </label>
-                      <button
-                        className="icon-button sort-direction"
-                        aria-label="Reverse sort order"
-                        onClick={() =>
-                          setDirection(direction === "asc" ? "desc" : "asc")
-                        }
-                      >
-                        {direction === "asc" ? (
-                          <ArrowUp size={16} />
-                        ) : (
-                          <ArrowDown size={16} />
-                        )}
-                      </button>
-                    </>
-                  )}
-                  <div className="view-toggle">
+                </div>
+                <div className="view-controls">
+                  <select
+                    aria-label="Sort files"
+                    value={sort}
+                    onChange={(event) => {
+                      setSort(event.target.value);
+                      setOffset(0);
+                    }}
+                  >
+                    <option value="name">Name</option>
+                    <option value="modified">Modified</option>
+                    <option value="size">Size</option>
+                    <option value="type">Type</option>
+                  </select>
+                  <button
+                    className="icon-button"
+                    aria-label={
+                      direction === "asc" ? "Sort descending" : "Sort ascending"
+                    }
+                    onClick={() =>
+                      setDirection(direction === "asc" ? "desc" : "asc")
+                    }
+                  >
+                    {direction === "asc" ? (
+                      <ArrowUp size={16} />
+                    ) : (
+                      <ArrowDown size={16} />
+                    )}
+                  </button>
+                  <div className="layout-toggle">
                     <button
                       className={layout === "grid" ? "active" : ""}
                       aria-label="Grid view"
@@ -939,636 +780,972 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-              </div>
-              {loading ? (
-                <div className="loading-state">
-                  <Loader2 className="spin" size={25} />
-                  <span>Getting your space ready…</span>
-                </div>
-              ) : entries.length === 0 ? (
-                <div
-                  className="empty-state"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (canUpload) doUpload(e.dataTransfer.files);
-                  }}
-                >
-                  <Art
-                    kind={
-                      view === "trash" ? "mint" : query ? "folder" : "cloud"
-                    }
+              </section>
+              {query && view === "files" && (
+                <label className="recursive-toggle">
+                  <input
+                    type="checkbox"
+                    checked={recursive}
+                    onChange={(e) => {
+                      setRecursive(e.target.checked);
+                      setOffset(0);
+                    }}
                   />
-                  <h3>
-                    {view === "trash"
+                  Include subfolders
+                </label>
+              )}
+              <div className="listing-caption">
+                <span>
+                  {search ? "Results" : "Files"}
+                  <small>{listing.total}</small>
+                </span>
+                <button
+                  className="text-button"
+                  disabled={!listing.items.length}
+                  onClick={() =>
+                    setSelection(
+                      selection.length === listing.items.length
+                        ? []
+                        : listing.items.map((item) => item.path),
+                    )
+                  }
+                >
+                  <CheckSquare size={14} />
+                  {selection.length === listing.items.length &&
+                  listing.items.length
+                    ? "Deselect page"
+                    : "Select page"}
+                </button>
+              </div>
+            </>
+          )}
+          {error && (
+            <div className="error-banner" role="alert">
+              <span>{error}</span>
+              <button onClick={refresh}>Try again</button>
+            </div>
+          )}
+          {(fileView || view === "trash") &&
+            (loading ? (
+              <div className="loading-area">
+                <Loader2 className="spin" size={26} />
+              </div>
+            ) : !error && !listing.items.length ? (
+              <div className="empty-state">
+                <Art kind={view === "trash" ? "folder" : "drive"} />
+                <h2>
+                  {search
+                    ? "No matches"
+                    : view === "trash"
                       ? "Trash is empty"
-                      : query
-                        ? "No files found."
-                        : "No files yet"}
-                  </h3>
-                  <p>
-                    {view === "trash"
-                      ? "Deleted files will appear here."
-                      : query
-                        ? "Try another search."
-                        : ""}
-                  </p>
-                  {view === "files" && !query && (
-                    <button
-                      className="text-button"
-                      onClick={() => input.current?.click()}
-                    >
-                      Choose files <ArrowRight size={15} />
-                    </button>
+                      : view === "favorites"
+                        ? "No favorites yet"
+                        : view === "tag"
+                          ? "No files with this tag"
+                          : "This folder is empty"}
+                </h2>
+                {view === "files" && !search && (
+                  <button
+                    className="button secondary"
+                    onClick={() => chooseUpload()}
+                  >
+                    <Upload size={16} />
+                    Upload files
+                  </button>
+                )}
+              </div>
+            ) : (
+              !error && (
+                <div
+                  className={
+                    "file-collection " +
+                    layout +
+                    (view === "trash" ? " trash-collection" : "")
+                  }
+                >
+                  {layout === "list" && (
+                    <div className="list-head">
+                      <span>Name</span>
+                      <span>Size</span>
+                      <span>Modified</span>
+                      <span />
+                    </div>
                   )}
-                </div>
-              ) : layout === "grid" ? (
-                <>
-                  {folders.length > 0 && (
-                    <>
-                      <div className="section-label">
-                        Folders <span>{folders.length}</span>
-                      </div>
-                      <div className="file-grid folder-grid">
-                        {folders.map(entryCard)}
-                      </div>
-                    </>
-                  )}
-                  {documents.length > 0 && (
-                    <>
-                      <div className="section-label">
-                        {query
-                          ? "Search results"
-                          : view === "trash"
-                            ? "Files in trash"
-                            : "Files"}{" "}
-                        <span>{documents.length}</span>
-                      </div>
-                      <div className="file-grid">
-                        {documents.map(entryCard)}
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <div className="file-table" role="table" aria-label="Files">
-                  <div className="table-head" role="row">
-                    <span>Name</span>
-                    <span>File size</span>
-                    <span>Date modified</span>
-                    <span />
-                  </div>
-                  {entries.map((entry) => (
-                    <div
-                      key={entry.path}
+                  {listing.items.map((entry) => (
+                    <article
+                      key={entry.id || entry.path}
                       className={
-                        "table-row " +
-                        (selected === entry.path ? "selected" : "")
+                        "file-card " +
+                        (entry.type === "folder" ? "folder-card " : "") +
+                        (selection.includes(entry.path) ? "selected" : "")
                       }
-                      role="row"
-                      onClick={() => setSelected(entry.path)}
+                      onContextMenu={(event) => {
+                        if (view === "trash") return;
+                        event.preventDefault();
+                        setContext({
+                          entry,
+                          x: Math.min(event.clientX, window.innerWidth - 240),
+                          y: Math.max(
+                            8,
+                            Math.min(event.clientY, window.innerHeight - 470),
+                          ),
+                        });
+                      }}
                     >
-                      <button
-                        className="table-name"
-                        onClick={() => view === "files" && openEntry(entry)}
-                      >
-                        <Art kind={kindOf(entry)} />
-                        <span>
+                      <div className="card-art">
+                        <button
+                          className="card-open"
+                          aria-label={"Open " + entry.name}
+                          onClick={() =>
+                            view === "trash"
+                              ? chooseAction("properties", [entry])
+                              : open(entry)
+                          }
+                        >
+                          <FileArtwork
+                            entry={entry}
+                            disabled={view === "trash"}
+                          />
+                        </button>
+                        {view !== "trash" && (
+                          <label
+                            className={
+                              "selection-check " +
+                              (selection.includes(entry.path) ? "checked" : "")
+                            }
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selection.includes(entry.path)}
+                              aria-label={"Select " + entry.name}
+                              onChange={(event) =>
+                                setSelection((current) =>
+                                  event.target.checked
+                                    ? [...current, entry.path]
+                                    : current.filter(
+                                        (item) => item !== entry.path,
+                                      ),
+                                )
+                              }
+                            />
+                            <Check size={13} />
+                          </label>
+                        )}
+                        {view !== "trash" && (
+                          <button
+                            className={
+                              "favorite-toggle " +
+                              (entry.favorite ? "is-favorite" : "")
+                            }
+                            aria-label={
+                              (entry.favorite ? "Unfavorite " : "Favorite ") +
+                              entry.name
+                            }
+                            onClick={() => favorite(entry)}
+                          >
+                            <Star
+                              size={16}
+                              fill={entry.favorite ? "currentColor" : "none"}
+                            />
+                          </button>
+                        )}
+                        <button
+                          className="card-more icon-button"
+                          aria-label={"Actions for " + entry.name}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (view === "trash") {
+                              chooseAction("properties", [entry]);
+                              return;
+                            }
+                            const rect =
+                              event.currentTarget.getBoundingClientRect();
+                            setContext({
+                              entry,
+                              x: Math.max(
+                                8,
+                                Math.min(
+                                  rect.right - 220,
+                                  window.innerWidth - 240,
+                                ),
+                              ),
+                              y: Math.max(
+                                8,
+                                Math.min(
+                                  rect.bottom + 6,
+                                  window.innerHeight - 470,
+                                ),
+                              ),
+                            });
+                          }}
+                        >
+                          <MoreHorizontal size={19} />
+                        </button>
+                      </div>
+                      <div className="card-info">
+                        <button
+                          className="file-name"
+                          title={entry.name}
+                          onClick={() =>
+                            view === "trash"
+                              ? chooseAction("properties", [entry])
+                              : open(entry)
+                          }
+                        >
                           {entry.name}
-                          {query && <small>{entry.path}</small>}
-                        </span>
-                      </button>
-                      <span className="table-size">
-                        {entry.type === "folder" ? "—" : bytes(entry.size)}
-                      </span>
-                      <span className="table-date">{date(entry.modified)}</span>
-                      <div className="table-actions">
-                        {view === "trash" ? (
-                          <>
+                        </button>
+                        <div className="card-meta">
+                          <span>
+                            {entry.type === "folder"
+                              ? "Folder"
+                              : bytes(entry.size)}
+                          </span>
+                          <time>{date(entry.modified)}</time>
+                        </div>
+                        {Boolean(entry.tags?.length) && (
+                          <div className="file-tags">
+                            {entry.tags?.slice(0, 3).map((tag) => (
+                              <button
+                                className={"tag-pill " + tag.color}
+                                key={tag.id}
+                                onClick={() => navigate("tag", "", tag.id)}
+                              >
+                                {tag.name}
+                              </button>
+                            ))}
+                            {(entry.tags?.length || 0) > 3 && (
+                              <span className="more-tags">
+                                +{entry.tags!.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {(view === "favorites" ||
+                          view === "tag" ||
+                          (recursive && search)) && (
+                          <span className="entry-path">
+                            /{entry.path.split("/").slice(0, -1).join("/")}
+                          </span>
+                        )}
+                        {view === "trash" && (
+                          <div className="trash-actions">
                             <button
-                              className="icon-button"
-                              aria-label={"Restore " + entry.name}
-                              onClick={() => restore(entry)}
+                              className="text-button"
+                              disabled={busy}
+                              onClick={() =>
+                                perform(
+                                  () =>
+                                    api("/trash/restore", "POST", {
+                                      id: entry.id,
+                                    }),
+                                  "Restored",
+                                )
+                              }
                             >
-                              <Undo2 size={17} />
+                              <History size={14} />
+                              Restore
                             </button>
                             <button
                               className="icon-button danger-text"
-                              aria-label={"Delete permanently " + entry.name}
-                              onClick={() => openDialog("permanent", entry)}
+                              aria-label={"Permanently delete " + entry.name}
+                              onClick={() => chooseAction("purge", [entry])}
                             >
                               <Trash2 size={16} />
                             </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              className="icon-button"
-                              aria-label={"Actions for " + entry.name}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMenu(
-                                  menu === entry.path ? null : entry.path,
-                                );
-                              }}
-                            >
-                              <Ellipsis size={19} />
-                            </button>
-                            {menu === entry.path && menuActions(entry)}
-                          </>
+                          </div>
                         )}
                       </div>
-                    </div>
+                      <span className="list-size">
+                        {entry.type === "folder" ? "—" : bytes(entry.size)}
+                      </span>
+                      <span className="list-date">{date(entry.modified)}</span>
+                    </article>
                   ))}
                 </div>
-              )}
-              <div className="files-footer">
-                <span>
-                  {listing.total} {listing.total === 1 ? "item" : "items"}
-                </span>
-                {listing.total > 80 && (
-                  <div className="pagination">
-                    <button
-                      disabled={offset === 0}
-                      onClick={() => setOffset(Math.max(0, offset - 80))}
-                    >
-                      <ArrowLeft size={15} />
-                      Previous
-                    </button>
-                    <span>{Math.floor(offset / 80) + 1}</span>
-                    <button
-                      disabled={offset + 80 >= listing.total}
-                      onClick={() => setOffset(offset + 80)}
-                    >
-                      Next
-                      <ArrowRight size={15} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </section>
+              )
+            ))}
+          {fileView && selected.length > 0 && (
+            <div className="selection-bar">
+              <button
+                className="icon-button"
+                onClick={() => setSelection([])}
+                aria-label="Clear selection"
+              >
+                <X size={17} />
+              </button>
+              <strong>{selected.length} selected</strong>
+              <div />
+              <button
+                onClick={() => chooseAction("move", selected)}
+                title="Move"
+              >
+                <FolderInput size={18} />
+                <span>Move</span>
+              </button>
+              <button
+                onClick={() => download(selected)}
+                disabled={busy}
+                title="Download ZIP"
+              >
+                <Download size={18} />
+                <span>Download</span>
+              </button>
+              <button
+                onClick={() => chooseAction("tags", selected)}
+                title="Tags"
+              >
+                <TagIcon size={18} />
+                <span>Tags</span>
+              </button>
+              <button
+                className="danger-text"
+                onClick={() => chooseAction("delete", selected)}
+                title="Move to trash"
+              >
+                <Trash2 size={18} />
+                <span>Trash</span>
+              </button>
+            </div>
           )}
-          {view === "shares" && (
-            <section className="panel">
-              <div className="panel-title">
-                <h2>Your shared links</h2>
-                <Link2 size={21} />
+          {view === "shares" &&
+            !error &&
+            (loading ? (
+              <div className="loading-area">
+                <Loader2 className="spin" />
               </div>
-              <p className="muted">Anyone with a link can download its file.</p>
-              {!shares.length && (
-                <div className="empty-state">
-                  <Art kind="folder" />
-                  <h3>Good things are worth sharing.</h3>
-                  <p>Create a link from a file’s action menu.</p>
-                </div>
-              )}
-              {shares.map((share) => (
-                <div className="share-row" key={share.id}>
-                  <span className="share-icon">
-                    <Link2 size={20} />
-                  </span>
-                  <div>
-                    <strong>{share.name}</strong>
-                    <p>
-                      {share.expires_at
-                        ? "Expires " + date(share.expires_at)
-                        : "No expiration"}{" "}
-                      · {share.path}
-                    </p>
-                  </div>
-                  <button
-                    className="button secondary"
-                    onClick={() => revoke(share.id)}
-                  >
-                    Revoke
-                  </button>
-                </div>
-              ))}
-              {listing.total > 80 && (
-                <div className="pagination">
-                  <button
-                    disabled={!offset}
-                    onClick={() => setOffset(Math.max(0, offset - 80))}
-                  >
-                    Previous
-                  </button>
-                  <button
-                    disabled={offset + 80 >= listing.total}
-                    onClick={() => setOffset(offset + 80)}
-                  >
-                    Next
-                  </button>
-                </div>
-              )}
-            </section>
-          )}
-          {view === "storage" && stats && (
-            <>
-              <section className="storage-dashboard panel">
-                <div>
-                  <span className="eyebrow">ON YOUR DEVICE</span>
-                  <h2>Your space, at a glance.</h2>
-                  <p className="muted">
-                    {stats.file_count} files · {bytes(stats.stored_bytes)} in
-                    RootDrive
-                  </p>
-                  <div className="big-storage-number">
-                    {bytes(stats.disk_free)}
-                    <span>available</span>
-                  </div>
-                  <div className="usage-track big">
-                    <span style={{ width: stats.disk_percent + "%" }} />
-                  </div>
-                  <div className="disk-labels">
-                    <span>{bytes(stats.disk_used)} used on device</span>
-                    <span>{bytes(stats.disk_total)} total</span>
-                  </div>
-                </div>
-                <Art kind="drive" />
-              </section>
-              <div className="storage-categories">
-                {Object.entries(stats.categories).map(([kind, amount]) => (
-                  <div className="panel" key={kind}>
-                    <Art kind={kind === "other" ? "archives" : kind} />
-                    <strong>
-                      {kind === "images"
-                        ? "Photos"
-                        : kind[0].toUpperCase() + kind.slice(1)}
-                    </strong>
-                    <span>{bytes(amount)}</span>
+            ) : !shares.items.length ? (
+              <div className="empty-state">
+                <Link size={40} />
+                <h2>No shared links</h2>
+              </div>
+            ) : (
+              <div className="shared-list">
+                {shares.items.map((share) => (
+                  <div className="shared-row" key={share.id}>
+                    <div className="shared-icon">
+                      <Link size={20} />
+                    </div>
+                    <div>
+                      <strong>{share.name}</strong>
+                      <span>
+                        Expires{" "}
+                        {share.expires_at ? date(share.expires_at) : "never"}
+                      </span>
+                      <small>/{share.path}</small>
+                    </div>
+                    <button
+                      className="button secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        if (window.confirm("Revoke this link?"))
+                          void perform(
+                            () => api("/shares/" + share.id, "DELETE"),
+                            "Link revoked",
+                          );
+                      }}
+                    >
+                      Revoke
+                    </button>
                   </div>
                 ))}
               </div>
-              <p className="storage-note">
-                Device usage includes other applications and trash. RootDrive
-                totals include active files only. Updates every 30 seconds.
-              </p>
-            </>
+            ))}
+          {["files", "favorites", "tag", "trash", "shares"].includes(view) &&
+            (view === "shares" ? shares.total : listing.total) > pageSize && (
+              <div className="pagination page-pagination">
+                <button
+                  disabled={!offset || loading}
+                  onClick={() => setOffset(offset - pageSize)}
+                >
+                  <ChevronLeft size={16} />
+                  Previous
+                </button>
+                <span>
+                  {offset + 1}–
+                  {Math.min(
+                    offset + pageSize,
+                    view === "shares" ? shares.total : listing.total,
+                  )}{" "}
+                  of {view === "shares" ? shares.total : listing.total}
+                </span>
+                <button
+                  disabled={
+                    offset + pageSize >=
+                      (view === "shares" ? shares.total : listing.total) ||
+                    loading
+                  }
+                  onClick={() => setOffset(offset + pageSize)}
+                >
+                  Next
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+          {view === "storage" && (
+            <Storage stats={stats} error={statsError} navigate={navigate} />
           )}
           {view === "settings" && (
-            <section className="panel settings-panel">
-              <div className="settings-brand">
-                <span className="brand-icon">
-                  <img src="/assets/app-icon.png" alt="RootDrive icon" />
-                </span>
-                <div>
-                  <h2>RootDrive</h2>
-                  <p>Your files. Your hardware. Your space.</p>
+            <div className="settings-stack">
+              <section className="settings-section">
+                <div className="section-heading">
+                  <h3>Appearance</h3>
                 </div>
-                <span className="version">MVP 1.0.0</span>
-              </div>
-              <div className="setting-row">
-                <div>
-                  <strong>
-                    <Server size={17} />
-                    Workspace
-                  </strong>
-                  <p>One shared space for everyone on this server.</p>
+                <div className="theme-options">
+                  {(["light", "dark"] as Theme[]).map((value) => (
+                    <button
+                      key={value}
+                      className={
+                        "theme-card " +
+                        value +
+                        (theme === value ? " chosen" : "")
+                      }
+                      onClick={() => setTheme(value)}
+                    >
+                      <div className="theme-mini">
+                        <i />
+                        <div>
+                          <span />
+                          <span />
+                          <span />
+                        </div>
+                      </div>
+                      <span>
+                        {value === "light" ? (
+                          <Sun size={17} />
+                        ) : (
+                          <Moon size={17} />
+                        )}
+                        {value === "light" ? "Light" : "Dark"}
+                        {theme === value && <Check size={17} />}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-                <span className="badge">Self-hosted</span>
-              </div>
-              <div className="setting-row">
-                <div>
-                  <strong>
-                    <ShieldCheck size={17} />
-                    Authentication
-                  </strong>
-                  <p>
-                    {account?.auth_enabled
-                      ? "Sign-in required. Sessions stay in secure cookies."
-                      : "Open workspace for your trusted local network."}
-                  </p>
-                </div>
-                <span className="badge">
-                  {account?.auth_enabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-              <div className="setting-row">
-                <div>
-                  <strong>
-                    <Link2 size={17} />
-                    Public links
-                  </strong>
-                  <p>
-                    {account?.shares_enabled
-                      ? "Anyone with a link can download a shared file."
-                      : "File sharing is turned off on this server."}
-                  </p>
-                </div>
-                <span className="badge">
-                  {account?.shares_enabled ? "Enabled" : "Disabled"}
-                </span>
-              </div>
-              <div className="setting-row">
-                <div>
-                  <strong>
-                    <CloudUpload size={17} />
-                    Upload limit
-                  </strong>
-                  <p>Multiple files, streamed to your device.</p>
-                </div>
-                <span className="badge">
-                  {bytes((account?.max_upload_size_mb || 2048) * 1024 * 1024)} /
-                  file
-                </span>
-              </div>
+              </section>
               <UsersSettings account={account} notify={notify} />
-              <div className="settings-foot">
-                <ShieldCheck size={18} />
-                Configuration is managed by the server owner in .env.
-              </div>
-            </section>
-          )}
-        </main>
-      </div>
-      {dragging && (
-        <div
-          className="drop-overlay"
-          onDragOver={(e) => e.preventDefault()}
-          onDragLeave={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node))
-              setDragging(false);
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            doUpload(e.dataTransfer.files);
-          }}
-        >
-          <div>
-            <Art kind="cloud" />
-            <h2>Drop files here</h2>
-            <p>Drop your files to upload to {path || "My files"}</p>
-          </div>
-        </div>
-      )}
-      {progress && (
-        <div className="upload-progress" role="status">
-          <div>
-            <span className="upload-icon">
-              <CloudUpload size={21} />
-            </span>
-            <div>
-              <strong>
-                Uploading {progress.index} of {progress.total}
-              </strong>
-              <p>{progress.name}</p>
+              <section className="settings-section">
+                <h3>Server</h3>
+                <dl className="properties-list">
+                  <div>
+                    <dt>Version</dt>
+                    <dd>MVP 1.0.0</dd>
+                  </div>
+                  <div>
+                    <dt>Upload limit</dt>
+                    <dd>{bytes(account.max_upload_size_mb * 1024 * 1024)}</dd>
+                  </div>
+                  <div>
+                    <dt>Public links</dt>
+                    <dd>{account.shares_enabled ? "Enabled" : "Disabled"}</dd>
+                  </div>
+                  <div>
+                    <dt>Workspace</dt>
+                    <dd>Shared</dd>
+                  </div>
+                </dl>
+              </section>
             </div>
-            <span>{progress.percent}%</span>
-          </div>
-          <div className="usage-track">
-            <span style={{ width: progress.percent + "%" }} />
-          </div>
-          <small>
-            {progress.percent === 100 ? "Saving to your drive…" : "Uploading…"}
-          </small>
+          )}
         </div>
-      )}
-      {toast && (
-        <div className="toast" role="status">
-          <CheckCircle2 size={19} />
-          <span>{toast}</span>
+        {dragging && (
+          <div className="drop-overlay">
+            <Upload size={48} />
+            <h2>Drop files here</h2>
+            <span>{path || "My files"}</span>
+          </div>
+        )}
+      </main>
+      <input
+        type="file"
+        hidden
+        multiple
+        ref={filesInput}
+        onChange={(event) => {
+          const files = [...(event.target.files || [])];
+          if (files.length)
+            queue.add(
+              files.map((file) => ({ file, relative: file.name })),
+              path,
+              replacePath.current,
+            );
+          event.target.value = "";
+          replacePath.current = undefined;
+        }}
+      />
+      <input
+        type="file"
+        hidden
+        multiple
+        ref={folderInput}
+        onChange={(event) => {
+          const files = [...(event.target.files || [])];
+          if (files.length)
+            queue.add(
+              files.map((file) => ({
+                file,
+                relative: file.webkitRelativePath || file.name,
+              })),
+              path,
+            );
+          event.target.value = "";
+        }}
+      />
+      <UploadQueue queue={queue} notify={notify} />
+      <div className="toast-stack" aria-live="polite">
+        {toasts.map((toast) => (
+          <div className="toast" key={toast.id}>
+            <Info size={17} />
+            <span>{toast.text}</span>
+            <button
+              aria-label="Dismiss notification"
+              onClick={() =>
+                setToasts((current) =>
+                  current.filter((item) => item.id !== toast.id),
+                )
+              }
+            >
+              <X size={15} />
+            </button>
+          </div>
+        ))}
+      </div>
+      {context && contextEntry && (
+        <div
+          role="menu"
+          className="context-menu"
+          style={{ left: context.x, top: context.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
           <button
-            aria-label="Dismiss notification"
-            onClick={() => setToast("")}
+            role="menuitem"
+            onClick={() => {
+              setContext(null);
+              open(contextEntry);
+            }}
           >
-            <X size={16} />
+            <HardDrive size={16} />
+            Open
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setContext(null);
+              void download([contextEntry]);
+            }}
+          >
+            <Download size={16} />
+            {contextEntry.type === "folder" ? "Download ZIP" : "Download"}
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setContext(null);
+              void favorite(contextEntry);
+            }}
+          >
+            <Star size={16} />
+            {contextEntry.favorite ? "Remove favorite" : "Add to favorites"}
+          </button>
+          <hr />
+          <button
+            role="menuitem"
+            onClick={() => chooseAction("rename", [contextEntry])}
+          >
+            <Info size={16} />
+            Rename
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => chooseAction("move", [contextEntry])}
+          >
+            <FolderInput size={16} />
+            Move
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => chooseAction("tags", [contextEntry])}
+          >
+            <TagIcon size={16} />
+            Tags & color
+          </button>
+          {contextEntry.type === "file" && (
+            <button
+              role="menuitem"
+              onClick={() => chooseAction("versions", [contextEntry])}
+            >
+              <History size={16} />
+              Version history
+            </button>
+          )}
+          {contextEntry.type === "file" && account.shares_enabled && (
+            <button
+              role="menuitem"
+              onClick={() => chooseAction("share", [contextEntry])}
+            >
+              <Link size={16} />
+              Share link
+            </button>
+          )}
+          <button
+            role="menuitem"
+            onClick={() => chooseAction("properties", [contextEntry])}
+          >
+            <CircleHelp size={16} />
+            Properties
+          </button>
+          <hr />
+          <button
+            role="menuitem"
+            className="danger-text"
+            onClick={() => chooseAction("delete", [contextEntry])}
+          >
+            <Trash2 size={16} />
+            Move to trash
           </button>
         </div>
       )}
-      {dialog && (
-        <Modal
+      {modal?.action === "newfolder" && (
+        <NameDialog
+          path={path}
+          close={() => setModal(null)}
+          done={() => done("Folder created")}
+        />
+      )}
+      {modal?.action === "rename" && (
+        <NameDialog
+          entry={modal.entries[0]}
+          path={path}
+          close={() => setModal(null)}
+          done={() => done("Renamed")}
+        />
+      )}
+      {modal?.action === "move" && (
+        <MoveDialog
+          entries={modal.entries}
+          close={() => setModal(null)}
+          done={() => done("Moved")}
+        />
+      )}
+      {modal?.action === "tags" && (
+        <TagsDialog
+          entries={modal.entries}
+          tags={tags}
+          close={() => setModal(null)}
+          done={() => done("Tags updated")}
+          reloadTags={loadTags}
+        />
+      )}
+      {tagManager && (
+        <TagsDialog
+          entries={[]}
+          tags={tags}
+          manager
+          close={() => {
+            setTagManager(false);
+            refresh();
+          }}
+          done={() => setTagManager(false)}
+          reloadTags={loadTags}
+        />
+      )}
+      {modal?.action === "properties" && (
+        <PropertiesDialog
+          entry={modal.entries[0]}
+          close={() => setModal(null)}
+        />
+      )}
+      {modal?.action === "preview" && (
+        <PreviewDialog
+          entry={modal.entries[0]}
+          close={() => setModal(null)}
+          properties={() => setModal({ ...modal, action: "properties" })}
+        />
+      )}
+      {modal?.action === "versions" && (
+        <VersionsDialog
+          entry={modal.entries[0]}
+          close={() => setModal(null)}
+          done={() => done("Version restored")}
+          replace={() => {
+            const file = modal.entries[0];
+            setModal(null);
+            chooseUpload(false, file.path);
+          }}
+        />
+      )}
+      {modal?.action === "share" && (
+        <ShareDialog
+          entry={modal.entries[0]}
+          close={() => {
+            setModal(null);
+            refresh();
+          }}
+        />
+      )}
+      {(modal?.action === "delete" || modal?.action === "purge") && (
+        <Dialog
           title={
-            {
-              folder: "A new folder",
-              rename: "Rename",
-              delete: "Move to trash?",
-              move: "Move to…",
-              share: "Share a little",
-              permanent: "Delete forever?",
-              properties: "Properties",
-            }[dialog.kind]
+            modal.action === "purge" ? "Delete permanently?" : "Move to trash?"
           }
-          close={closeDialog}
+          close={() => {
+            if (!busy) setModal(null);
+          }}
         >
-          <form onSubmit={perform}>
-            {dialog.kind === "properties" && dialog.entry && (
-              <>
-                <div className="properties-art">
-                  <FileArtwork entry={dialog.entry} />
-                </div>
-                <dl className="properties-list">
-                  {[
-                    ["Name", dialog.entry.name],
-                    [
-                      "Type",
-                      dialog.entry.type === "folder"
-                        ? "Folder"
-                        : dialog.entry.mime || "File",
-                    ],
-                    [
-                      "Size",
-                      dialog.entry.type === "folder"
-                        ? "—"
-                        : bytes(dialog.entry.size) +
-                          " (" +
-                          dialog.entry.size.toLocaleString("en") +
-                          " bytes)",
-                    ],
-                    [
-                      "Modified",
-                      new Date(dialog.entry.modified * 1000).toLocaleString(),
-                    ],
-                    ["Path", dialog.entry.path],
-                  ].map(([label, detail]) => (
-                    <div key={label}>
-                      <dt>{label}</dt>
-                      <dd>{detail}</dd>
-                    </div>
-                  ))}
-                </dl>
-                {isPhoto(dialog.entry) && <ImageDetails entry={dialog.entry} />}
-              </>
-            )}
+          <p className="confirm-name">
+            {modal.entries.length === 1
+              ? modal.entries[0].name
+              : modal.entries.length + " selected items"}
+          </p>
+          <p className="muted">
+            {modal.action === "purge"
+              ? "This also removes saved versions. This cannot be undone."
+              : "You can restore these files from Trash."}
+          </p>
+          <div className="dialog-actions">
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={() => setModal(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="button danger"
+              disabled={busy}
+              onClick={() =>
+                perform(
+                  () =>
+                    modal.action === "purge"
+                      ? api("/trash", "DELETE", { id: modal.entries[0].id })
+                      : api("/files/batch/trash", "POST", {
+                          paths: modal.entries.map((item) => item.path),
+                        }),
+                  modal.action === "purge"
+                    ? "Deleted permanently"
+                    : "Moved to trash",
+                )
+              }
+            >
+              {busy ? (
+                <Loader2 size={16} className="spin" />
+              ) : (
+                <Trash2 size={16} />
+              )}
+              {modal.action === "purge" ? "Delete forever" : "Move to trash"}
+            </button>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
 
-            {["folder", "rename"].includes(dialog.kind) && (
-              <>
-                <Art
-                  kind={
-                    dialog.kind === "folder" ? "folder" : kindOf(dialog.entry!)
-                  }
-                  className="dialog-art"
-                />
-                <label className="field-label">
-                  {dialog.kind === "folder" ? "Folder name" : "Name"}
-                  <input
-                    autoFocus
-                    value={value}
-                    onChange={(e) => setValue(e.target.value)}
-                    required
-                    maxLength={240}
-                    placeholder="Something wonderful"
-                  />
-                </label>
-              </>
-            )}
-            {dialog.kind === "delete" && (
-              <p className="dialog-copy">
-                <strong>{dialog.entry?.name}</strong> will move to trash. You
-                can bring it back anytime.
-              </p>
-            )}
-            {dialog.kind === "permanent" && (
-              <p className="dialog-copy">
-                <strong>{dialog.entry?.name}</strong> will be permanently
-                deleted. This cannot be undone.
-              </p>
-            )}
-            {dialog.kind === "move" && (
-              <>
-                <div className="move-breadcrumb">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMovePath(movePath.split("/").slice(0, -1).join("/"))
-                    }
-                    disabled={!movePath}
-                  >
-                    <ArrowLeft size={16} />
-                  </button>
-                  <span>{movePath || "My files"}</span>
-                </div>
-                <div className="move-folders">
-                  {moveFolders
-                    .filter(
-                      (folder) =>
-                        folder.path !== dialog.entry?.path &&
-                        !folder.path.startsWith(dialog.entry?.path + "/"),
-                    )
-                    .map((folder) => (
-                      <button
-                        type="button"
-                        key={folder.path}
-                        onClick={() => setMovePath(folder.path)}
-                      >
-                        <Art kind={kindOf(folder)} />
-                        <span>{folder.name}</span>
-                        <ChevronRight size={16} />
-                      </button>
-                    ))}
-                  {!moveFolders.length && (
-                    <p className="muted">No subfolders here</p>
-                  )}
-                </div>
-              </>
-            )}
-            {dialog.kind === "share" && (
-              <>
-                <p className="dialog-copy">
-                  Anyone with this link can download{" "}
-                  <strong>{dialog.entry?.name}</strong>.
-                </p>
-                {shareLink ? (
-                  <div className="share-result">
-                    <input
-                      aria-label="Share URL"
-                      value={shareLink}
-                      readOnly
-                      onFocus={(e) => e.target.select()}
-                    />
-                    <button
-                      className="button primary"
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(shareLink);
-                          notify("Link copied");
-                        } catch {
-                          notify("Select and copy the link above");
-                        }
-                      }}
-                    >
-                      <Link2 size={16} />
-                      Copy link
-                    </button>
-                  </div>
-                ) : (
-                  <label className="field-label">
-                    Link expires
-                    <select
-                      value={value}
-                      onChange={(e) => setValue(e.target.value)}
-                    >
-                      <option value="1">In 1 hour</option>
-                      <option value="24">In 24 hours</option>
-                      <option value="168">In 7 days</option>
-                      <option value="0">Never</option>
-                    </select>
-                  </label>
-                )}
-              </>
-            )}
-            {dialogError && (
-              <p className="error-text" role="alert">
-                {dialogError}
-              </p>
-            )}
-            <div className="dialog-actions">
-              <button
-                type="button"
-                className="button secondary"
-                onClick={closeDialog}
-              >
-                {shareLink || dialog.kind === "properties" ? "Done" : "Cancel"}
-              </button>
-              {!shareLink && dialog.kind !== "properties" && (
-                <button
-                  className={
-                    "button " +
-                    (["delete", "permanent"].includes(dialog.kind)
-                      ? "danger"
-                      : "primary")
-                  }
-                  disabled={busy}
-                >
-                  {busy && <Loader2 className="spin" size={16} />}
-                  {
-                    {
-                      folder: "Create folder",
-                      rename: "Save name",
-                      delete: "Move to trash",
-                      move: "Move here",
-                      share: "Create link",
-                      permanent: "Delete forever",
-                      properties: "Done",
-                    }[dialog.kind]
-                  }
-                </button>
+function Storage({
+  stats,
+  error,
+  navigate,
+}: {
+  stats: Stats | null;
+  error: string;
+  navigate: (view: View) => void;
+}) {
+  if (error)
+    return (
+      <div className="error-banner" role="alert">
+        {error}
+      </div>
+    );
+  if (!stats)
+    return (
+      <div className="loading-area">
+        <Loader2 className="spin" />
+      </div>
+    );
+  const temporary =
+    stats.uploads_bytes + stats.cache_bytes + stats.exports_bytes;
+  const parts = [
+    {
+      name: "RootDrive files",
+      size: stats.stored_bytes,
+      color: "storage-blue",
+      detail: stats.file_count.toLocaleString("en") + " files",
+      action: "files" as View,
+    },
+    {
+      name: "Trash",
+      size: stats.trash_bytes,
+      color: "storage-rose",
+      detail: "Deleted files",
+      action: "trash" as View,
+    },
+    {
+      name: "Versions",
+      size: stats.versions_bytes,
+      color: "storage-violet",
+      detail: "Previous file versions",
+    },
+    {
+      name: "Temporary",
+      size: temporary,
+      color: "storage-amber",
+      detail: "Uploads, previews & ZIPs",
+    },
+    {
+      name: "System",
+      size: stats.system_bytes,
+      color: "storage-slate",
+      detail: "OS, apps & other files",
+    },
+    {
+      name: "Free",
+      size: stats.disk_free,
+      color: "storage-free",
+      detail: "Available space",
+    },
+  ];
+  return (
+    <div className="storage-page">
+      <section className="storage-overview">
+        <div className="storage-overview-top">
+          <div>
+            <span className="muted">Disk usage</span>
+            <h2>
+              {bytes(stats.disk_used)}
+              <small> / {bytes(stats.disk_total)}</small>
+            </h2>
+          </div>
+          <span className="disk-percentage">
+            {stats.disk_percent}
+            <small>%</small>
+          </span>
+        </div>
+        <div
+          className="storage-bar"
+          aria-label={"Disk " + stats.disk_percent + "% used"}
+        >
+          {parts.map((part) => (
+            <i
+              key={part.name}
+              className={part.color}
+              style={{ width: (part.size / stats.disk_total) * 100 + "%" }}
+              title={part.name + ": " + bytes(part.size)}
+            />
+          ))}
+        </div>
+        <div className="storage-legend">
+          {parts.map((part) => (
+            <span key={part.name}>
+              <i className={part.color} />
+              {part.name}
+            </span>
+          ))}
+        </div>
+      </section>
+      <div className="storage-breakdown">
+        {parts.map((part) => (
+          <section className="storage-part" key={part.name}>
+            <div className={"storage-part-icon " + part.color}>
+              {part.name === "Trash" ? (
+                <Trash2 size={21} />
+              ) : part.name === "Versions" ? (
+                <History size={21} />
+              ) : part.name === "Temporary" ? (
+                <Upload size={21} />
+              ) : part.name === "Free" ? (
+                <Check size={21} />
+              ) : (
+                <HardDrive size={21} />
               )}
             </div>
-          </form>
-        </Modal>
-      )}
-      {preview && (
-        <Modal title={preview.name} close={closePreview} wide>
-          <div className="preview-content">
-            {preview.mime === "application/pdf" ? (
-              <iframe src={fileURL(preview, true)} title={preview.name} />
-            ) : (
-              <img src={fileURL(preview, true)} alt={preview.name} />
+            <div>
+              <h3>{part.name}</h3>
+              <p>{part.detail}</p>
+            </div>
+            <strong>{bytes(part.size)}</strong>
+            {part.action && (
+              <button
+                className="icon-button"
+                aria-label={"Open " + part.name}
+                onClick={() => navigate(part.action!)}
+              >
+                <ChevronRight size={18} />
+              </button>
             )}
-          </div>
-          <div className="preview-footer">
-            <span>
-              {bytes(preview.size)} · {date(preview.modified)}
-            </span>
-            <a className="button primary" href={fileURL(preview)}>
-              <ArrowDownToLine size={17} />
-              Download
-            </a>
-          </div>
-        </Modal>
-      )}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Login({
+  connected,
+  theme,
+  setTheme,
+}: {
+  connected: () => Promise<void>;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+}) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ csrf_token: string }>("/auth/login", "POST", {
+        username: data.get("username"),
+        password: data.get("password"),
+      });
+      setCSRF(result.csrf_token);
+      await connected();
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="login-screen">
+      <button
+        className="icon-button login-theme"
+        aria-label="Toggle theme"
+        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+      >
+        {theme === "light" ? <Moon /> : <Sun />}
+      </button>
+      <form className="login-card" onSubmit={submit}>
+        <img className="login-logo" src="/assets/app-icon.png" alt="" />
+        <h1>RootDrive</h1>
+        <label className="field-label">
+          Username
+          <input name="username" autoComplete="username" autoFocus required />
+        </label>
+        <label className="field-label">
+          Password
+          <input
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            required
+          />
+        </label>
+        {error && (
+          <p className="error-text" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="button primary full-width" disabled={busy}>
+          {busy ? (
+            <Loader2 className="spin" size={17} />
+          ) : (
+            <ShieldCheck size={17} />
+          )}
+          Sign in
+        </button>
+      </form>
     </div>
   );
 }

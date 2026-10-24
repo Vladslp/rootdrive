@@ -55,6 +55,7 @@ export function Art({
 }
 export function kindOf(entry: Entry) {
   if (entry.type === "folder") {
+    if (entry.color) return entry.color;
     const colors: Record<string, string> = {
       photos: "mint",
       documents: "folder",

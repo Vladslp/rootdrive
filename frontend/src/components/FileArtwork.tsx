@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type Entry } from "../services/api";
 import { Art, kindOf } from "./Art";
 
@@ -19,6 +19,7 @@ export function FileArtwork({
 }) {
   const [failed, setFailed] = useState(false);
   const image = isPhoto(entry);
+  useEffect(() => setFailed(false), [entry.path, entry.modified]);
   if (image && !disabled && !failed)
     return (
       <img

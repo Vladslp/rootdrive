@@ -1,3 +1,4 @@
+export type Tag = { id: string; name: string; color: string };
 export type Entry = {
   name: string;
   path: string;
@@ -6,6 +7,10 @@ export type Entry = {
   modified: number;
   mime?: string;
   id?: string;
+  favorite?: boolean;
+  tags?: Tag[];
+  color?: string | null;
+  version_count?: number;
 };
 export type Listing = { items: Entry[]; total: number };
 export type Account = {
@@ -21,6 +26,12 @@ export type Stats = {
   disk_free: number;
   disk_total: number;
   disk_used: number;
+  system_bytes: number;
+  trash_bytes: number;
+  versions_bytes: number;
+  uploads_bytes: number;
+  cache_bytes: number;
+  exports_bytes: number;
   disk_percent: number;
   categories: Record<string, number>;
 };
@@ -31,6 +42,14 @@ export type Shared = {
   expires_at: number | null;
   created_at: number;
 };
+export class APIError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
 let csrf = "";
 export function setCSRF(value: string | null) {
   csrf = value || "";
@@ -52,7 +71,10 @@ export async function api<T>(
   if (!response.ok) {
     if (response.status === 401)
       window.dispatchEvent(new Event("rootdrive:unauthorized"));
-    throw new Error(data.error?.message || "Something went wrong");
+    throw new APIError(
+      data.error?.message || "Something went wrong",
+      response.status,
+    );
   }
   return data;
 }
@@ -100,4 +122,77 @@ export function bytes(value: number) {
     " " +
     ["B", "KB", "MB", "GB", "TB"][unit]
   );
+}
+
+export function sendChunk(
+  url: string,
+  body: Blob,
+  signal?: AbortSignal,
+  progress?: (loaded: number) => void,
+  method = "PUT",
+) {
+  return new Promise<UploadJob>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, "/api" + url);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf);
+    const abort = () => xhr.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    xhr.upload.onprogress = (event) => progress?.(event.loaded);
+    xhr.onload = () => {
+      cleanup();
+      let data;
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        reject(new Error("Invalid server response"));
+        return;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else
+        reject(
+          new APIError(data.error?.message || "Upload failed", xhr.status),
+        );
+    };
+    xhr.onerror = () => {
+      cleanup();
+      reject(new Error("Connection lost"));
+    };
+    xhr.onabort = () => {
+      cleanup();
+      reject(new DOMException("Paused", "AbortError"));
+    };
+    if (signal?.aborted) {
+      cleanup();
+      reject(new DOMException("Paused", "AbortError"));
+      return;
+    }
+    xhr.send(body);
+  });
+}
+export type UploadJob = {
+  id: string;
+  path: string;
+  name: string;
+  size: number;
+  received: number;
+  last_modified: number;
+  status: string;
+  overwrite: boolean;
+  source_name: string;
+};
+export const date = (value: number) =>
+  new Date(value * 1000).toLocaleDateString("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+export function saveURL(url: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }

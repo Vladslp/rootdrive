@@ -32,7 +32,7 @@ Nothing is uploaded to a third-party service. Runtime does not load fonts, scrip
 ## Requirements
 
 - Python 3.11 or newer.
-- Node.js 20.19+ or 22.12+ and npm for developing/building the frontend.
+- Node.js 22.13+ and npm for developing/building the frontend.
 - Linux or macOS; ARM64 and x86-64 are supported targets.
 - A writable local disk with enough space for files, temporary uploads and trash.
 
@@ -219,9 +219,34 @@ A crash or power failure can leave an unfinished filesystem/metadata transition.
 
 Photo cards load lazy 640-pixel JPEG thumbnails. HEIC/HEIF and AVIF previews are converted to JPEG with a maximum 1920-pixel edge so browsers can display them. Downloads always return the original file. Pillow and pillow-heif run locally, with one conversion at a time, and respect the pixel limit. The first preview can take longer on slower hardware. Supported-platform wheels bundle the HEIF decoder; source installs may require libheif development packages.
 
-Derived files live in `INTERNAL_PATH/previews`, outside browsable storage. Cache keys include the source path, modification time, change time and size. The oldest derived files are removed when the configured cache limit is exceeded. Original files and their EXIF are never changed.
+Derived files live in `INTERNAL_PATH/previews`, outside browsable storage. Cache keys include the source path, modification time, change time and size. The oldest derived files are removed when the configured cache limit is exceeded. Preview generation never changes original files or their EXIF.
 
 Properties includes a collapsible EXIF section with available camera make/model, lens, ISO, exposure, aperture, focal length, capture time, software and other selected fields. Dimensions and values are read from the original; absent metadata is not invented. Public links still share the original file, including whatever metadata that original contains.
+
+## Built-in editors
+
+Open a text file or DOCX/ODT document to edit it. Images and PDFs have an **Edit** action in their preview and file menu. Use **Save** or **Ctrl/Cmd+S**. Unsaved changes require confirmation before closing. There is no automatic save.
+
+| Editor | Implemented operations | Limits |
+| --- | --- | --- |
+| Text and code | UTF-8 text, Markdown, JSON, CSV/TSV, configuration and common code formats; line wrapping and native text undo | 2 MiB encoded text; UTF-8 BOM and uniform CRLF endings retained |
+| Photo | Crop by dragging or keyboard-accessible edge sliders, clockwise rotation, horizontal flip, brightness, contrast and saturation | JPEG, PNG, WebP, HEIC/HEIF and AVIF; 64 MiB and `MAX_PREVIEW_PIXELS`; animated images excluded |
+| DOCX / ODT | Change existing paragraph and table-cell text, line breaks, tabs and spaces while retaining text-run styles and other package entries | 32 MiB file, 64 MiB uncompressed package, 8 MiB content XML, 3,000 paragraphs, 2 MiB text; one changed paragraph up to 100,000 characters |
+| PDF | Reorder, rotate and remove pages with real locally rendered thumbnails | 32 MiB, 500 pages; at least one page retained; encrypted PDFs, forms and detected signed documents excluded |
+
+Every successful editor save uses the same full-file version mechanism as replacement uploads. The previous contents can be recovered through **Version history**. Saving checks a revision based on file identity, size and nanosecond timestamps; stale changes return HTTP 409. Validation and transformation finish in an internal staging file before replacement. Database failures attempt filesystem rollback. Authenticated saves use the existing session and CSRF protection. The configurable upload limit also applies to saved output.
+
+The photo editor shows a JPEG preview with a maximum 1920-pixel edge. Final processing uses the original image at its full resolution. Transformations apply orientation, clockwise rotation, flip, normalized crop, then color adjustments. Alpha is retained where the output format supports it; available EXIF and ICC data are passed through with orientation and dimensions updated. JPEG/HEIF/WebP/AVIF saves re-encode the image and may change compression, color rendering or auxiliary metadata. The browser's color-filter preview approximates the saved result. Recover the untouched original from its version if needed.
+
+The Office editor changes text, rather than reproducing a word processor's page layout. It does not insert/delete paragraphs or change document styles. Paragraphs containing links, fields, drawings, tracked changes or other complex constructs are locked and preserved. Headers, footers, embedded media and other ZIP entries remain in the file. XML external entities and DTDs are rejected, and package contents are never extracted onto the server filesystem. Existing run styles are retained and inserted text inherits an adjacent run. Detected package signatures are rejected because editing would invalidate them.
+
+The PDF editor manages pages, not existing PDF text or images. It preserves selected pages and their content, imports associated outlines where possible and retains document metadata. Advanced annotations and PDF structures may be rewritten by pypdf. PDF.js, its worker, fonts, character maps and WebAssembly resources are bundled locally; opening the editor makes no CDN requests. The editor and PDF renderer are loaded on demand, so the normal file manager keeps its small initial bundle.
+
+Old binary Office formats, XLSX, PPTX, rich-text RTF, video/audio editing, OCR, arbitrary PDF text editing and real-time collaboration are not implemented. Supported files keep their normal preview/download actions. Invalid, excessively large or unsupported files show an explicit editor error without changing the original.
+
+## Interface and motion
+
+Storage uses one transparent, six-icon ImageGen sprite atlas for files, Trash, Versions, Temporary, System and free space. The light and dark themes share the same artwork. Cards enter with a short stagger; navigation, dialogs, menus, notifications, theme controls and upload progress use brief transitions. Hover motion is limited to fine pointers. All animation and transitions are disabled under `prefers-reduced-motion: reduce`. The header shows **Running** without duplicating the current page title.
 
 ## Python architecture
 
@@ -240,11 +265,13 @@ backend/app/
     uploads.py          Persistent upload jobs, bounded chunks and completion
     settings.py         Validated live upload limit and administrator checks
     workspace.py        Favorites, tags, bulk actions, ZIPs, versions and media
+    editor.py           Typed editor requests, revisions and validated saves
   services/
     filesystem.py       Path validation, listing, streaming downloads and statistics
     security.py         Argon2 verification, session lookup and CSRF enforcement
     previews.py         Bounded photo conversion and derived thumbnail cache
     metadata.py         Read-only EXIF extraction and display formatting
+    editors.py          Bounded text, image, Office XML and PDF transformations
     workspace.py        Stable item metadata, version snapshots and batch rollback
 backend/tests/          Isolated API integration tests
 frontend/src/           React, TypeScript, local API client and illustrated UI
@@ -336,7 +363,7 @@ Install a supported Node.js version to build locally, or copy the project and a 
 - One shared workspace; no private per-user folders or granular permissions.
 - One server worker. Locks do not coordinate separate processes.
 - Designed for a trusted LAN with server-owned storage. Do not let untrusted local users mutate storage concurrently. Final download opens reject symlinks, but parent-path validation and mutations are not fully descriptor-relative; hostile external filesystem changes can create races.
-- Office-document conversion and OCR are not implemented. Audio/video support depends on browser codecs. Native images and PDFs preview directly; HEIC/HEIF and AVIF have derived JPEG previews.
+- Office editing is limited to DOCX/ODT paragraph text, and PDF editing to page operations. Full Office rendering, format conversion and OCR are not implemented. Audio/video support depends on browser codecs. Native images and PDFs preview directly; HEIC/HEIF and AVIF have derived JPEG previews.
 - Media playback, saved-version downloads and generated ZIPs support byte ranges. Original attachment downloads stream sequentially; large PDF inline behavior depends on the browser.
 - Directory scanning, recursive search and initial storage stats can take time on very large collections. There is no background indexer.
 - The move picker is paginated. Bulk selection covers the current page, not every result in a large search.
@@ -348,7 +375,7 @@ Install a supported Node.js version to build locally, or copy the project and a 
 
 ## Planned improvements
 
-Indexed search for large libraries, private per-user folders/permissions, scheduled backups, richer account administration, original-file download ranges and stronger descriptor-relative filesystem operations. These are not exposed as unfinished controls in the interface.
+Rich document formatting, spreadsheet/presentation editors, more photo tools, indexed search for large libraries, private per-user folders/permissions, scheduled backups, richer account administration, original-file download ranges and stronger descriptor-relative filesystem operations. These are not exposed as unfinished controls in the interface.
 
 ## Design assets
 

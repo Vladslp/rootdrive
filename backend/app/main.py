@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import ROOT, Settings
 from .database import ApplicationSetting, create_database
-from .routers import auth, files, shares, uploads, workspace, settings as server_settings
+from .routers import auth, editor, files, shares, uploads, workspace, settings as server_settings
 from .services.filesystem import Filesystem
 from .services.previews import Previews
 
@@ -22,6 +22,9 @@ class BodyLimit:
             return await self.app(scope, receive, send)
         received = 0
         limit = self.settings.max_upload_size_mb * 1024 * 1024 * 20 + 1024 * 1024
+
+        if scope.get('path') == '/api/editor' and scope.get('method') == 'POST':
+            limit = 16 * 1024 * 1024
 
         async def limited_receive():
             nonlocal received
@@ -95,6 +98,7 @@ def create_app(settings: Settings | None = None):
 
     app.include_router(auth.router)
     app.include_router(files.router)
+    app.include_router(editor.router)
     app.include_router(shares.router)
     app.include_router(uploads.router)
     app.include_router(workspace.router)

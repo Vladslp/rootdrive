@@ -6,11 +6,13 @@ export function Dialog({
   children,
   close,
   wide = false,
+  className = "",
 }: {
   title: string;
   children: ReactNode;
   close: () => void;
   wide?: boolean;
+  className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const closeRef = useRef(close);
@@ -21,21 +23,27 @@ export function Dialog({
     document.body.style.overflow = "hidden";
     const frame = requestAnimationFrame(() => {
       const target = box.current?.querySelector<HTMLElement>(
-        "[autofocus], input:not([type=hidden]), button, select",
+        "[autofocus], input:not([type=hidden]), button, select, textarea",
       );
       target?.focus();
     });
     const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeRef.current();
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        closeRef.current();
+      }
       if (event.key !== "Tab") return;
       const elements = [
         ...(box.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], video[controls], audio[controls], summary, [tabindex="0"]',
+          'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], video[controls], audio[controls], summary, [tabindex="0"]',
         ) || []),
       ].filter((node) => node.getClientRects().length);
       const first = elements[0],
         last = elements[elements.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (!box.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -60,7 +68,7 @@ export function Dialog({
     >
       <div
         ref={box}
-        className={"dialog " + (wide ? "dialog-wide" : "")}
+        className={"dialog " + (wide ? "dialog-wide " : "") + className}
         role="dialog"
         aria-modal="true"
         aria-label={title}

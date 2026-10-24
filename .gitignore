@@ -15,3 +15,5 @@ storage/
 work/
 
 *.tsbuildinfo
+
+frontend/public/assets/pdfjs/

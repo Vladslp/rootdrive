@@ -105,7 +105,7 @@ def verify(path):
                 raise RuntimeError(requirement.name)
 
 verify(Path('requirements.txt'))
-for name in ['fastapi', 'uvicorn', 'sqlalchemy', 'pydantic_settings', 'argon2', 'multipart', 'PIL', 'pillow_heif']:
+for name in ['fastapi', 'uvicorn', 'sqlalchemy', 'pydantic_settings', 'argon2', 'multipart', 'PIL', 'pillow_heif', 'lxml', 'pypdf']:
     importlib.import_module(name)
 PY
 }
@@ -144,7 +144,7 @@ else:
     files.extend(root.glob('tsconfig*.json'))
     files.extend(root.glob('.env*'))
     for name in ['src', 'public']:
-        files.extend(path for path in (root / name).rglob('*') if path.is_file())
+        files.extend(path for path in (root / name).rglob('*') if path.is_file() and not path.is_relative_to(root / 'public/assets/pdfjs'))
 hash_value = hashlib.sha256(sys.argv[2].encode())
 for path in sorted(set(files)):
     if path.is_file():
@@ -168,12 +168,12 @@ if [ ! -f frontend/dist/index.html ] || [ "$BUILD_HASH" != "$SAVED_BUILD_HASH" ]
         if [ -f frontend/dist/index.html ] && [ -z "$SAVED_BUILD_HASH" ]; then
             note 'Using the supplied frontend build'
         else
-            printf '%s\n' 'Building the frontend requires Node.js 20.19+ or 22.12+ and npm. Install them, then run ./start.sh again.' >&2
+            printf '%s\n' 'Building the frontend requires Node.js 22.13+ and npm. Install them, then run ./start.sh again.' >&2
             exit 1
         fi
     else
-        if ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 12) || (major === 20 && minor >= 19) ? 0 : 1)'; then
-            printf '%s\n' 'Please update Node.js to 20.19+ or 22.12+ before building the frontend.' >&2
+        if ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 13) ? 0 : 1)'; then
+            printf '%s\n' 'Please update Node.js to 22.13+ before building the frontend.' >&2
             exit 1
         fi
         NODE_PLATFORM=$(node -p 'process.platform + ":" + process.arch + ":" + process.versions.node.split(".")[0]')

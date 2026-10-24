@@ -266,7 +266,7 @@ def media(request: Request, path: str, user=Depends(require_access)):
     with fs.lock:
         source = fs.path(path, allow_root=False)
         entry = fs.entry(source)
-        if entry['type'] != 'file' or not entry['mime'].startswith(('audio/', 'video/')):
+        if entry['type'] != 'file' or not (entry['mime'].startswith(('audio/', 'video/')) or entry['mime'] == 'application/pdf'):
             raise HTTPException(415, 'Media playback is not available for this file')
         descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
         handle = os.fdopen(descriptor, 'rb')

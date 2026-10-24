@@ -1,5 +1,13 @@
 # RootDrive visual assets
 
+## Storage icon pack
+
+`storage-icons.png` is one 1536 × 1024 transparent atlas, generated with the built-in ImageGen tool on October 25, 2026. Row-major order: RootDrive files, Trash, Versions, Temporary, System, Free. The generated alpha is preserved; no OS background removal or post-processing was applied. CSS uses six equal square cells, a 300% × 200% background size and matching background positions. Separate early candidates were discarded and are not shipped.
+
+Final prompt:
+
+> Use case: stylized-concept. Create ONE cohesive UI ICON PACK as a precise 3-column by 2-row sprite atlas, landscape 1536x1024, with 6 equally sized square cells and genuinely transparent background everywhere outside the icon objects. Each icon centered at exactly the center of its own cell, occupying 65-70% of the cell. All six share identical optical size, rounded soft clay illustration style, minimal 2.5D bevel, gentle satin pastel shading and consistent slight front three-quarter view. No photorealism, no metal, no realistic glass, no glow, no shadows outside the objects, no grid lines, no background tiles, no labels, no typography. Opaque ivory highlights; do not make internal white elements transparent. Fits RootDrive's blue/lavender/yellow/mint illustrated folder icons and clean white or dark navy dashboard. EXACT order: TOP LEFT cornflower-blue storage drive with pale ivory front and two simple blue file sheets behind, representing personal files; TOP CENTER dusty-rose rounded trash bin with lid and tiny ivory inset details; TOP RIGHT lavender stacked document sheets with a bold ivory history arrow and tiny clock; BOTTOM LEFT honey-yellow simple rounded hourglass with ivory center and golden sand, representing temporary data; BOTTOM CENTER slate-blue rounded microchip with short thick pins and a pale ivory gear at its center, representing system; BOTTOM RIGHT mint-green bold chunky rounded checkmark, representing free space, no tile or circle. Clear polished silhouettes legible at 48px, generous empty transparent margins in every cell, balanced coherent set.
+
 Created for this project using the built-in ImageGen tool. Initial background removal used Finder → Quick Actions → Remove Background on macOS. The application icon, folder atlas and main file atlas were then refined with ImageGen to preserve solid interior highlights that macOS had removed. Original generations are preserved outside the repository.
 
 - `app-icon.png`: a minimal flat 2D charcoal mark showing three HDD glyphs joined by a branching root, with blue status dashes. The exterior is generated transparency; no macOS background removal was applied to this replacement.

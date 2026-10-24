@@ -1,0 +1,302 @@
+import io
+import zipfile
+from pathlib import Path
+import pytest
+from fastapi.testclient import TestClient
+from lxml import etree
+from PIL import Image
+from pypdf import PdfReader, PdfWriter
+from app.config import Settings
+from app.database import User
+from app.main import create_app
+from app.services.security import hasher
+
+
+@pytest.fixture
+def app(tmp_path):
+    return create_app(Settings(storage_path=tmp_path / 'storage', database_path=tmp_path / 'data/rootdrive.db', internal_path=tmp_path / 'internal', _env_file=None))
+
+
+@pytest.fixture
+def client(app):
+    with TestClient(app) as connection:
+        yield connection
+
+
+def upload(client, name, content):
+    assert client.post('/api/files/upload', files={'files': (name, content)}).status_code == 201
+
+
+def read(client, path):
+    response = client.get('/api/editor', params={'path': path})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def save(client, path, data, **changes):
+    return client.post('/api/editor', json={'path': path, 'revision': data['revision'], 'kind': data['kind'], **changes})
+
+
+def test_text_save_version_conflict_and_line_endings(client, app):
+    raw = b'\xef\xbb\xbfhello\r\nworld\r\n'
+    upload(client, 'note.md', raw)
+    data = read(client, 'note.md')
+    assert data['text'] == 'hello\r\nworld\r\n'
+    response = save(client, 'note.md', data, text='new\nworld\n')
+    assert response.status_code == 200
+    assert client.get('/api/files/download', params={'path': 'note.md'}).content == b'\xef\xbb\xbfnew\r\nworld\r\n'
+    assert save(client, 'note.md', data, text='stale').status_code == 409
+    versions = client.get('/api/files/versions', params={'path': 'note.md'}).json()['items']
+    assert len(versions) == 1
+    assert (app.state.settings.internal_path / 'versions' / versions[0]['id']).read_bytes() == raw
+    assert not list((app.state.settings.internal_path / 'uploads').iterdir())
+
+
+def test_text_limits_binary_and_unsupported(client, app):
+    upload(client, 'binary.txt', b'a\x00b')
+    assert client.get('/api/editor', params={'path': 'binary.txt'}).status_code == 415
+    upload(client, 'latin.txt', b'\xff')
+    assert client.get('/api/editor', params={'path': 'latin.txt'}).status_code == 415
+    upload(client, 'unknown.exe', b'abc')
+    assert client.get('/api/editor', params={'path': 'unknown.exe'}).status_code == 415
+    upload(client, 'large.txt', b'x' * (2 * 1024 * 1024 + 1))
+    assert client.get('/api/editor', params={'path': 'large.txt'}).status_code == 413
+    upload(client, 'text.txt', b'ok')
+    data = read(client, 'text.txt')
+    assert save(client, 'text.txt', data, text='\x00').status_code == 422
+    assert save(client, 'text.txt', data, text='a' * (2 * 1024 * 1024 + 1)).status_code == 422
+    assert save(client, 'text.txt', data, text='\u0410' * (2 * 1024 * 1024)).status_code == 413
+    assert client.get('/api/files/download', params={'path': 'text.txt'}).content == b'ok'
+
+
+def test_editor_isolation_and_kind(client, app, tmp_path):
+    outside = tmp_path / 'secret.txt'
+    outside.write_text('private')
+    (app.state.settings.storage_path / 'link.txt').symlink_to(outside)
+    for path in ['../secret.txt', '/etc/passwd', 'link.txt']:
+        assert client.get('/api/editor', params={'path': path}).status_code == 400
+        assert client.get('/api/editor/image', params={'path': path}).status_code == 400
+        assert client.post('/api/editor', json={'path': path, 'revision': '0' * 64, 'kind': 'text', 'text': 'bad'}).status_code == 400
+    upload(client, 'hello.txt', b'hello')
+    data = read(client, 'hello.txt')
+    assert save(client, 'hello.txt', {**data, 'kind': 'photo'}, photo={}).status_code == 422
+    assert client.get('/api/editor', params={'path': ''}).status_code == 400
+
+
+def photo_bytes(format='PNG', animated=False):
+    buffer = io.BytesIO()
+    image = Image.new('RGBA' if format == 'PNG' else 'RGB', (80, 40), (150, 80, 40, 120) if format == 'PNG' else (150, 80, 40))
+    exif = Image.Exif()
+    exif[271] = 'RootDrive Test Camera'
+    image.save(buffer, format=format, exif=exif, **({'save_all': True, 'append_images': [Image.new('RGB', (80, 40), 'blue')], 'duration': 100, 'loop': 0} if animated else {}))
+    return buffer.getvalue()
+
+
+def test_photo_crop_rotate_adjust_and_alpha(client):
+    upload(client, 'photo.png', photo_bytes())
+    data = read(client, 'photo.png')
+    assert (data['width'], data['height']) == (80, 40)
+    preview = client.get('/api/editor/image', params={'path': 'photo.png'})
+    assert preview.status_code == 200
+    response = save(client, 'photo.png', data, photo={'rotation': 90, 'flip': True, 'crop': [0, 0, 1, .5], 'brightness': 1.2, 'contrast': .9, 'saturation': .8})
+    assert response.status_code == 200, response.text
+    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': 'photo.png'}).content)) as image:
+        assert image.size == (40, 40)
+        assert image.getpixel((10, 10))[3] == 120
+        assert image.getexif()[271] == 'RootDrive Test Camera'
+        assert image.getexif()[274] == 1
+    assert save(client, 'photo.png', response.json(), photo={'crop': [.9, 0, .1, 1]}).status_code == 422
+
+
+def test_photo_animation_and_pixel_limit(client, app):
+    upload(client, 'animated.webp', photo_bytes('WEBP', True))
+    assert client.get('/api/editor', params={'path': 'animated.webp'}).status_code == 415
+    upload(client, 'photo.jpg', photo_bytes('JPEG'))
+    app.state.settings.max_preview_pixels = 100
+    assert client.get('/api/editor', params={'path': 'photo.jpg'}).status_code == 413
+
+
+def document_bytes(extension='docx', dangerous=False):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        if extension == 'docx':
+            xml = b'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Hello</w:t></w:r><w:r><w:t> world</w:t></w:r></w:p><w:p><w:hyperlink><w:r><w:t>Link</w:t></w:r></w:hyperlink></w:p></w:body></w:document>'
+            if dangerous:
+                xml = b'<!DOCTYPE document [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>&xxe;</w:t></w:r></w:p></w:body></w:document>'
+            archive.writestr('word/document.xml', xml)
+            archive.writestr('word/media/preserved.bin', b'embedded-object')
+        else:
+            archive.writestr('mimetype', 'application/vnd.oasis.opendocument.text', compress_type=zipfile.ZIP_STORED)
+            archive.writestr('content.xml', b'<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:text><text:p>Hello<text:span> world</text:span>!</text:p></office:text></office:body></office:document-content>')
+            archive.writestr('Pictures/preserved.bin', b'embedded-object')
+        archive.writestr('unchanged.xml', b'<preserved/>')
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize('extension', ['docx', 'odt'])
+def test_office_text_preserves_package_and_runs(client, extension):
+    upload(client, 'paper.' + extension, document_bytes(extension))
+    data = read(client, 'paper.' + extension)
+    assert data['paragraphs'][0]['text'] == ('Hello world' if extension == 'docx' else 'Hello world!')
+    response = save(client, 'paper.' + extension, data, paragraphs=[{'id': 0, 'text': 'Hello bright world!'}])
+    assert response.status_code == 200, response.text
+    assert response.json()['paragraphs'][0]['text'] == 'Hello bright world!'
+    raw = client.get('/api/files/download', params={'path': 'paper.' + extension}).content
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        assert archive.read('unchanged.xml') == b'<preserved/>'
+        assert archive.read('word/media/preserved.bin' if extension == 'docx' else 'Pictures/preserved.bin') == b'embedded-object'
+        if extension == 'docx':
+            tree = etree.fromstring(archive.read('word/document.xml'))
+            assert len(tree.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}b')) == 1
+            assert response.json()['paragraphs'][1]['editable'] is False
+            assert save(client, 'paper.docx', response.json(), paragraphs=[{'id': 1, 'text': 'destroy'}]).status_code == 422
+        else:
+            assert archive.infolist()[0].filename == 'mimetype'
+            assert archive.infolist()[0].compress_type == zipfile.ZIP_STORED
+
+
+def test_document_entities_damaged_and_locked(client):
+    upload(client, 'evil.docx', document_bytes(dangerous=True))
+    assert client.get('/api/editor', params={'path': 'evil.docx'}).status_code == 415
+    upload(client, 'broken.odt', b'not a document')
+    assert client.get('/api/editor', params={'path': 'broken.odt'}).status_code == 415
+    upload(client, 'paper.docx', document_bytes())
+    data = read(client, 'paper.docx')
+    assert save(client, 'paper.docx', data, paragraphs=[{'id': 0, 'text': 'x'}, {'id': 0, 'text': 'y'}]).status_code == 422
+    assert save(client, 'paper.docx', data, paragraphs=[{'id': 20, 'text': 'x'}]).status_code == 422
+
+
+def pdf_bytes(encrypted=False):
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=300)
+    writer.add_blank_page(width=400, height=500)
+    writer.add_blank_page(width=600, height=700)
+    writer.add_metadata({'/Title': 'RootDrive PDF'})
+    if encrypted:
+        writer.encrypt('test-password')
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def test_pdf_reorder_rotate_delete_and_metadata(client):
+    upload(client, 'pages.pdf', pdf_bytes())
+    data = read(client, 'pages.pdf')
+    assert data['pages'] == 3
+    response = save(client, 'pages.pdf', data, pages=[{'index': 2, 'rotation': 90}, {'index': 0, 'rotation': 0}])
+    assert response.status_code == 200, response.text
+    reader = PdfReader(io.BytesIO(client.get('/api/files/download', params={'path': 'pages.pdf'}).content))
+    assert len(reader.pages) == 2
+    assert reader.pages[0].mediabox.width == 600
+    assert reader.pages[0].rotation == 90
+    assert reader.pages[1].mediabox.width == 200
+    assert reader.metadata.title == 'RootDrive PDF'
+    assert save(client, 'pages.pdf', response.json(), pages=[]).status_code == 422
+    assert save(client, 'pages.pdf', response.json(), pages=[{'index': 0}, {'index': 0}]).status_code == 422
+    assert save(client, 'pages.pdf', response.json(), pages=[{'index': 2}]).status_code == 422
+
+
+def test_pdf_encrypted_and_damaged(client):
+    upload(client, 'locked.pdf', pdf_bytes(True))
+    assert client.get('/api/editor', params={'path': 'locked.pdf'}).status_code == 415
+    upload(client, 'broken.pdf', b'broken')
+    assert client.get('/api/editor', params={'path': 'broken.pdf'}).status_code == 415
+
+
+def test_editor_requires_auth_and_csrf(tmp_path):
+    app = create_app(Settings(auth_enabled=True, storage_path=tmp_path / 'storage', database_path=tmp_path / 'data/app.db', internal_path=tmp_path / 'internal', _env_file=None))
+    (app.state.settings.storage_path / 'private.txt').write_text('private')
+    with app.state.db() as db:
+        db.add(User(username='editor', password_hash=hasher.hash('valid-test-password'), role='user'))
+        db.commit()
+    with TestClient(app) as client:
+        assert client.get('/api/editor', params={'path': 'private.txt'}).status_code == 401
+        assert client.get('/api/editor/image', params={'path': 'private.txt'}).status_code == 401
+        assert client.post('/api/editor', json={'path': 'private.txt', 'revision': '0' * 64, 'kind': 'text', 'text': 'x'}).status_code == 401
+        login = client.post('/api/auth/login', json={'username': 'editor', 'password': 'valid-test-password'})
+        assert login.status_code == 200
+        data = read(client, 'private.txt')
+        assert save(client, 'private.txt', data, text='saved').status_code == 403
+        client.headers['X-CSRF-Token'] = login.json()['csrf_token']
+        assert save(client, 'private.txt', data, text='saved').status_code == 200
+
+
+@pytest.mark.parametrize('extension', ['docx', 'odt'])
+def test_office_line_breaks_tabs_and_spaces(client, extension):
+    upload(client, 'spaces.' + extension, document_bytes(extension))
+    data = read(client, 'spaces.' + extension)
+    text = '  Hello\nnew\tworld  ! '
+    result = save(client, 'spaces.' + extension, data, paragraphs=[{'id': 0, 'text': text}])
+    assert result.status_code == 200, result.text
+    assert result.json()['paragraphs'][0]['text'] == text
+    assert result.json()['paragraphs'][0]['editable'] is True
+    result = save(client, 'spaces.' + extension, result.json(), paragraphs=[{'id': 0, 'text': 'Changed again\nwith  spaces'}])
+    assert result.status_code == 200
+    assert result.json()['paragraphs'][0]['text'] == 'Changed again\nwith  spaces'
+
+
+def test_pdf_range_for_editor(client):
+    raw = pdf_bytes()
+    upload(client, 'range.pdf', raw)
+    response = client.get('/api/files/media', params={'path': 'range.pdf'}, headers={'Range': 'bytes=10-29'})
+    assert response.status_code == 206
+    assert response.content == raw[10:30]
+    assert response.headers['content-type'].startswith('application/pdf')
+    assert client.head('/api/files/media', params={'path': 'range.pdf'}).headers['content-length'] == str(len(raw))
+
+
+def test_editor_save_rolls_back_on_database_failure(client, app, monkeypatch):
+    from sqlalchemy.orm import Session
+    upload(client, 'rollback.txt', b'original')
+    data = read(client, 'rollback.txt')
+    def fail_commit(self):
+        raise RuntimeError('simulated database failure')
+    monkeypatch.setattr(Session, 'commit', fail_commit)
+    with pytest.raises(RuntimeError):
+        save(client, 'rollback.txt', data, text='changed')
+    assert (app.state.settings.storage_path / 'rollback.txt').read_bytes() == b'original'
+    assert not list((app.state.settings.internal_path / 'uploads').iterdir())
+    assert not list((app.state.settings.internal_path / 'versions').iterdir())
+
+
+def test_heic_editor_save_and_version(client):
+    buffer = io.BytesIO()
+    Image.new('RGB', (120, 80), '#739a86').save(buffer, format='HEIF', quality=90)
+    raw = buffer.getvalue()
+    upload(client, 'camera.heic', raw)
+    data = read(client, 'camera.heic')
+    result = save(client, 'camera.heic', data, photo={'rotation': 90, 'crop': [0, 0, 1, 1]})
+    assert result.status_code == 200, result.text
+    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': 'camera.heic'}).content)) as image:
+        assert image.size == (80, 120)
+    assert len(client.get('/api/files/versions', params={'path': 'camera.heic'}).json()['items']) == 1
+
+
+def test_photo_palette_transparency(client):
+    buffer = io.BytesIO()
+    image = Image.new('P', (80, 40), 0)
+    image.putpalette([100, 140, 180] + [0, 0, 0] * 255)
+    image.save(buffer, format='PNG', transparency=0)
+    upload(client, 'palette.png', buffer.getvalue())
+    data = read(client, 'palette.png')
+    result = save(client, 'palette.png', data, photo={'brightness': 1.2})
+    assert result.status_code == 200
+    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': 'palette.png'}).content)) as saved:
+        assert saved.convert('RGBA').getpixel((0, 0))[3] == 0
+
+
+def test_office_signed_document_rejected(client):
+    buffer = io.BytesIO(document_bytes())
+    with zipfile.ZipFile(buffer, 'a') as archive:
+        archive.writestr('_xmlsignatures/sig1.xml', '<signature/>')
+    upload(client, 'signed.docx', buffer.getvalue())
+    assert client.get('/api/editor', params={'path': 'signed.docx'}).status_code == 415
+
+
+def test_edit_limit_preserves_original(client, app):
+    upload(client, 'limit.txt', b'small')
+    data = read(client, 'limit.txt')
+    app.state.settings.max_upload_size_mb = 1
+    assert save(client, 'limit.txt', data, text='a' * (1024 * 1024 + 1)).status_code == 413
+    assert (app.state.settings.storage_path / 'limit.txt').read_bytes() == b'small'
+    assert not list((app.state.settings.internal_path / 'uploads').iterdir())

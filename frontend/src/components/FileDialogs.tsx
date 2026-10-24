@@ -8,6 +8,7 @@ import {
   FolderInput,
   History,
   Loader2,
+  Pencil,
   Plus,
   RotateCcw,
   Tag as TagIcon,
@@ -23,12 +24,14 @@ import {
   type Listing,
   type Tag,
 } from "../services/api";
+import { canEdit } from "../services/editor";
 import { Dialog } from "./Dialog";
 import { Art, kindOf } from "./Art";
 import { FileArtwork, isPhoto } from "./FileArtwork";
 import { ImageDetails } from "./ImageDetails";
 
 export type FileAction =
+  | "edit"
   | "rename"
   | "newfolder"
   | "move"
@@ -604,10 +607,12 @@ export function PreviewDialog({
   entry,
   close,
   properties,
+  edit,
 }: {
   entry: Entry;
   close: () => void;
   properties: () => void;
+  edit: () => void;
 }) {
   const [failed, setFailed] = useState(false);
   const kind = kindOf(entry);
@@ -654,6 +659,12 @@ export function PreviewDialog({
       </div>
       <div className="preview-actions">
         <span>{bytes(entry.size)}</span>
+        {canEdit(entry) && (
+          <button className="button secondary" onClick={edit}>
+            <Pencil size={16} />
+            Edit
+          </button>
+        )}
         <button className="button secondary" onClick={properties}>
           Properties
         </button>

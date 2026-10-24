@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -28,6 +30,7 @@ import {
   Menu,
   Moon,
   MoreHorizontal,
+  Pencil,
   Plus,
   Search,
   Settings,
@@ -54,6 +57,8 @@ import {
   type Tag,
 } from "./services/api";
 import { Art, kindOf } from "./components/Art";
+import { canEdit, editorKind } from "./services/editor";
+import { StorageArtwork } from "./components/StorageArtwork";
 import { FileArtwork } from "./components/FileArtwork";
 import { Dialog } from "./components/Dialog";
 import {
@@ -71,8 +76,16 @@ import { UploadLimitSettings } from "./components/UploadLimitSettings";
 import { UploadQueue } from "./components/UploadQueue";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
+const EditorDialog = lazy(() => import("./components/EditorDialog"));
+
 type View =
-  "files" | "favorites" | "tag" | "shares" | "trash" | "storage" | "settings";
+  | "files"
+  | "favorites"
+  | "tag"
+  | "shares"
+  | "trash"
+  | "storage"
+  | "settings";
 type Theme = "light" | "dark";
 const pageSize = 60;
 
@@ -320,6 +333,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", key);
   }, [modal, tagManager, fileView, listing.items]);
   function navigate(next: View, destination = "", tag = "") {
+    window.scrollTo({ top: 0, behavior: "instant" });
     setView(next);
     setPath(destination);
     setActiveTag(tag);
@@ -349,7 +363,13 @@ export default function App() {
   }
   function open(entry: Entry) {
     if (entry.type === "folder") navigate("files", entry.path);
-    else setModal({ action: "preview", entries: [entry] });
+    else
+      setModal({
+        action: ["text", "document"].includes(editorKind(entry) || "")
+          ? "edit"
+          : "preview",
+        entries: [entry],
+      });
   }
   async function download(entries: Entry[]) {
     if (entries.length === 1 && entries[0].type === "file") {
@@ -581,13 +601,6 @@ export default function App() {
             >
               <Menu size={22} />
             </button>
-            <span className="topbar-location">{title}</span>
-            {view === "files" && path && (
-              <>
-                <ChevronRight size={14} />
-                <span className="topbar-folder">{path.split("/").pop()}</span>
-              </>
-            )}
           </div>
           <div className="topbar-right">
             <button
@@ -610,11 +623,11 @@ export default function App() {
             )}
             <span className="connection-state">
               <i />
-              Connected
+              Running
             </span>
           </div>
         </header>
-        <div className="page-content">
+        <div className="page-content" key={`${view}:${path}:${activeTag}`}>
           <div className="page-heading">
             <div>
               <span className="eyebrow">ROOTDRIVE</span>
@@ -876,9 +889,12 @@ export default function App() {
                       <span />
                     </div>
                   )}
-                  {listing.items.map((entry) => (
+                  {listing.items.map((entry, index) => (
                     <article
                       key={entry.id || entry.path}
+                      style={{
+                        animationDelay: Math.min(index, 10) * 24 + "ms",
+                      }}
                       className={
                         "file-card " +
                         (entry.type === "folder" ? "folder-card " : "") +
@@ -1338,6 +1354,15 @@ export default function App() {
             <HardDrive size={16} />
             Open
           </button>
+          {canEdit(contextEntry) && (
+            <button
+              role="menuitem"
+              onClick={() => chooseAction("edit", [contextEntry])}
+            >
+              <Pencil size={16} />
+              Edit
+            </button>
+          )}
           <button
             role="menuitem"
             onClick={() => {
@@ -1471,7 +1496,28 @@ export default function App() {
           entry={modal.entries[0]}
           close={() => setModal(null)}
           properties={() => setModal({ ...modal, action: "properties" })}
+          edit={() => setModal({ ...modal, action: "edit" })}
         />
+      )}
+      {modal?.action === "edit" && (
+        <Suspense
+          fallback={
+            <Dialog title={modal.entries[0].name} close={() => setModal(null)}>
+              <div className="loading-area">
+                <Loader2 className="spin" />
+              </div>
+            </Dialog>
+          }
+        >
+          <EditorDialog
+            entry={modal.entries[0]}
+            close={() => setModal(null)}
+            saved={() => {
+              refresh();
+              notify("Saved · previous version kept");
+            }}
+          />
+        </Suspense>
       )}
       {modal?.action === "versions" && (
         <VersionsDialog
@@ -1656,20 +1702,14 @@ function Storage({
         </div>
       </section>
       <div className="storage-breakdown">
-        {parts.map((part) => (
-          <section className="storage-part" key={part.name}>
-            <div className={"storage-part-icon " + part.color}>
-              {part.name === "Trash" ? (
-                <Trash2 size={21} />
-              ) : part.name === "Versions" ? (
-                <History size={21} />
-              ) : part.name === "Temporary" ? (
-                <Upload size={21} />
-              ) : part.name === "Free" ? (
-                <Check size={21} />
-              ) : (
-                <HardDrive size={21} />
-              )}
+        {parts.map((part, index) => (
+          <section
+            className="storage-part"
+            key={part.name}
+            style={{ animationDelay: index * 45 + "ms" }}
+          >
+            <div className="storage-part-icon">
+              <StorageArtwork index={index} />
             </div>
             <div>
               <h3>{part.name}</h3>

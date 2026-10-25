@@ -22,9 +22,10 @@ export function Dialog({
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const frame = requestAnimationFrame(() => {
-      const target = box.current?.querySelector<HTMLElement>(
-        "[autofocus], input:not([type=hidden]), button, select, textarea",
-      );
+      const target =
+        box.current?.querySelector<HTMLElement>(
+          "[autofocus], input:not([type=hidden]), select, textarea",
+        ) || box.current?.querySelector<HTMLElement>("button");
       target?.focus();
     });
     const key = (event: KeyboardEvent) => {

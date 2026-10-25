@@ -33,6 +33,7 @@ import { ImageDetails } from "./ImageDetails";
 export type FileAction =
   | "edit"
   | "rename"
+  | "newfile"
   | "newfolder"
   | "move"
   | "tags"
@@ -104,6 +105,106 @@ export function NameDialog({
           >
             {busy && <Loader2 size={16} className="spin" />}
             {entry ? "Save" : "Create folder"}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+export function NewFileDialog({
+  path,
+  close,
+  created,
+}: {
+  path: string;
+  close: () => void;
+  created: (entry: Entry) => void;
+}) {
+  const [name, setName] = useState("Untitled");
+  const [extension, setExtension] = useState("txt");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const filename = name.toLowerCase().endsWith("." + extension)
+        ? name
+        : name + "." + extension;
+      const result = await api<Entry>("/files", "POST", {
+        path,
+        name: filename,
+      });
+      created(result);
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog
+      title="New file"
+      close={() => {
+        if (!busy) close();
+      }}
+    >
+      <form onSubmit={submit}>
+        <label className="field-label">
+          Name
+          <input
+            autoFocus
+            value={name}
+            maxLength={230}
+            required
+            disabled={busy}
+            onChange={(event) => setName(event.target.value)}
+            onFocus={(event) => event.target.select()}
+          />
+        </label>
+        <label className="field-label">
+          File type
+          <select
+            value={extension}
+            disabled={busy}
+            onChange={(event) => setExtension(event.target.value)}
+          >
+            {[
+              ["txt", "Text"],
+              ["md", "Markdown"],
+              ["docx", "Document"],
+              ["odt", "OpenDocument"],
+              ["json", "JSON"],
+              ["csv", "CSV"],
+              ["py", "Python"],
+              ["js", "JavaScript"],
+              ["html", "HTML"],
+              ["css", "CSS"],
+            ].map(([value, label]) => (
+              <option key={value} value={value}>
+                {label} · .{value}
+              </option>
+            ))}
+          </select>
+        </label>
+        {error && (
+          <p className="error-text" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={close}
+          >
+            Cancel
+          </button>
+          <button className="button primary" disabled={busy || !name}>
+            {busy && <Loader2 size={16} className="spin" />}Create & edit
           </button>
         </div>
       </form>

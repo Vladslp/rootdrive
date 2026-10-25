@@ -6,6 +6,11 @@ class FolderInput(BaseModel):
     name: str = Field(min_length=1, max_length=240)
 
 
+class CreateFileInput(BaseModel):
+    path: str = Field(default="", max_length=4096)
+    name: str = Field(min_length=1, max_length=240)
+
+
 class RenameInput(BaseModel):
     path: str
     name: str = Field(min_length=1, max_length=240)

@@ -7,12 +7,11 @@ export const textExtensions = new Set(
 );
 export function editorKind(entry: Entry) {
   if (entry.type !== "file") return null;
-  const extension = entry.name.split(".").pop()?.toLowerCase() || "";
+  const name = entry.name.replace(/ \(edited(?: \d+)?\)(?=\.|$)/g, "");
+  const extension = name.split(".").pop()?.toLowerCase() || "";
   if (
     textExtensions.has(extension) ||
-    ["Dockerfile", "Makefile", ".gitignore", ".env.example"].includes(
-      entry.name,
-    )
+    ["Dockerfile", "Makefile", ".gitignore", ".env.example"].includes(name)
   )
     return "text";
   if (

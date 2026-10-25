@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   AlignLeft,
-  Check,
   Code2,
   FileText,
   Image as ImageIcon,
@@ -73,7 +72,7 @@ export default function EditorDialog({
 }: {
   entry: Entry;
   close: () => void;
-  saved: () => void;
+  saved: (copy: Entry) => void;
 }) {
   const [data, setData] = useState<EditorData | null>(null);
   const [text, setText] = useState("");
@@ -84,7 +83,6 @@ export default function EditorDialog({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [wrap, setWrap] = useState(true);
-  const [status, setStatus] = useState("");
   const initial = useRef("");
   const textBox = useRef<HTMLTextAreaElement>(null);
   const loadData = useCallback((value: EditorData) => {
@@ -136,7 +134,6 @@ export default function EditorDialog({
     if (!data || !dirty || busy) return;
     setBusy(true);
     setError("");
-    setStatus("");
     try {
       const changes =
         data.kind === "text"
@@ -157,15 +154,17 @@ export default function EditorDialog({
                     )
                     .map(({ id, text }) => ({ id, text })),
                 };
-      const result = await api<EditorData>("/editor", "POST", {
-        path: entry.path,
-        revision: data.revision,
-        kind: data.kind,
-        ...changes,
-      });
-      loadData(result);
-      setStatus("Saved");
-      saved();
+      const result = await api<EditorData & { entry: Entry }>(
+        "/editor",
+        "POST",
+        {
+          path: entry.path,
+          revision: data.revision,
+          kind: data.kind,
+          ...changes,
+        },
+      );
+      saved(result.entry);
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -260,7 +259,6 @@ export default function EditorDialog({
                     value={text}
                     onChange={(event) => {
                       setText(event.target.value);
-                      setStatus("");
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Tab") {
@@ -290,7 +288,6 @@ export default function EditorDialog({
                   edits={photo}
                   change={(value) => {
                     setPhoto(value);
-                    setStatus("");
                   }}
                 />
               )}
@@ -321,7 +318,6 @@ export default function EditorDialog({
                                     : paragraph,
                                 ),
                               );
-                              setStatus("");
                             }}
                           />
                         ) : (
@@ -349,7 +345,6 @@ export default function EditorDialog({
                     pages={pages}
                     change={(value) => {
                       setPages(value);
-                      setStatus("");
                     }}
                   />
                 </Suspense>
@@ -368,15 +363,10 @@ export default function EditorDialog({
                   <i />
                   Unsaved changes
                 </>
-              ) : status ? (
-                <>
-                  <Check size={14} />
-                  Saved
-                </>
               ) : data?.kind === "text" ? (
                 `${text.split("\n").length.toLocaleString()} lines · ${text.length.toLocaleString()} characters`
               ) : (
-                "Previous version kept on save"
+                "Original stays unchanged"
               )}
             </span>
             {data && dirty && (
@@ -406,7 +396,7 @@ export default function EditorDialog({
                 onClick={() => void save()}
               >
                 <Save size={16} />
-                Save
+                Save copy
               </button>
             )}
           </div>

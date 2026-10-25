@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pypdf.errors import PdfReadError
 from ..services.security import require_access
 from ..services.workspace import install_file
-from ..services.editors import DOCUMENT_LIMIT, PHOTO_LIMIT, TEXT_LIMIT, OfficeDocument, edit_pdf, edit_photo, open_original, pdf_reader, photo_info, read_text, revision
+from ..services.editors import DOCUMENT_LIMIT, PHOTO_LIMIT, TEXT_LIMIT, OfficeDocument, copy_destination, edit_pdf, edit_photo, open_original, pdf_reader, photo_info, read_text, revision
 
 router = APIRouter(prefix='/api/editor', dependencies=[Depends(require_access)])
 
@@ -138,8 +138,9 @@ def save_editor(body: SaveInput, request: Request):
                 result = source_data(fs, original, candidate, kind, token)
             if revision(original.stat(follow_symlinks=False), body.path) != token:
                 raise HTTPException(409, 'This file changed. Reopen the editor before saving')
-            install_file(fs, db, staged, original, overwrite=True)
-            result['revision'] = revision(original.stat(follow_symlinks=False), body.path)
+            destination = copy_destination(fs, original)
+            result['entry'] = install_file(fs, db, staged, destination)
+            result['revision'] = revision(destination.stat(follow_symlinks=False), fs.relative(destination))
             return result
     except (zipfile.BadZipFile, etree.XMLSyntaxError, PdfReadError, ValueError, KeyError):
         raise HTTPException(415, 'This file is damaged or uses an unsupported document format')

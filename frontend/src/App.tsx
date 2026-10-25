@@ -18,6 +18,7 @@ import {
   CircleHelp,
   Download,
   FolderInput,
+  FilePlus2,
   FolderPlus,
   HardDrive,
   History,
@@ -64,6 +65,7 @@ import { Dialog } from "./components/Dialog";
 import {
   MoveDialog,
   NameDialog,
+  NewFileDialog,
   PreviewDialog,
   PropertiesDialog,
   ShareDialog,
@@ -637,6 +639,14 @@ export default function App() {
             </div>
             {view === "files" && (
               <div className="heading-actions">
+                <button
+                  className="button secondary"
+                  aria-label="New file"
+                  onClick={() => chooseAction("newfile", [])}
+                >
+                  <FilePlus2 size={17} />
+                  <span>New file</span>
+                </button>
                 <button
                   className="button secondary"
                   aria-label="New folder"
@@ -1441,6 +1451,17 @@ export default function App() {
           </button>
         </div>
       )}
+      {modal?.action === "newfile" && (
+        <NewFileDialog
+          path={path}
+          close={() => setModal(null)}
+          created={(entry) => {
+            refresh();
+            notify("File created");
+            setModal({ action: "edit", entries: [entry] });
+          }}
+        />
+      )}
       {modal?.action === "newfolder" && (
         <NameDialog
           path={path}
@@ -1512,10 +1533,7 @@ export default function App() {
           <EditorDialog
             entry={modal.entries[0]}
             close={() => setModal(null)}
-            saved={() => {
-              refresh();
-              notify("Saved · previous version kept");
-            }}
+            saved={(copy) => done("Copy saved · " + copy.name)}
           />
         </Suspense>
       )}

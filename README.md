@@ -223,9 +223,13 @@ Derived files live in `INTERNAL_PATH/previews`, outside browsable storage. Cache
 
 Properties includes a collapsible EXIF section with available camera make/model, lens, ISO, exposure, aperture, focal length, capture time, software and other selected fields. Dimensions and values are read from the original; absent metadata is not invented. Public links still share the original file, including whatever metadata that original contains.
 
+## Create files
+
+Use **New file → Create & edit** to create a UTF-8 text/code file or a minimal valid DOCX/ODT document in the current folder and open its editor. The type picker includes TXT, Markdown, DOCX, ODT, JSON, CSV, Python, JavaScript, HTML and CSS. JSON starts with an empty object; other text files start empty. Documents start with one empty editable paragraph. `POST /api/files` accepts `path` and `name`, validates the parent and filename, and rejects conflicts without overwriting. Creation uses internal staging, the shared filesystem lock and existing session/CSRF protection. Closing the editor leaves the new file in place; saving edits creates a separate edited copy.
+
 ## Built-in editors
 
-Open a text file or DOCX/ODT document to edit it. Images and PDFs have an **Edit** action in their preview and file menu. Use **Save** or **Ctrl/Cmd+S**. Unsaved changes require confirmation before closing. There is no automatic save.
+Open a text file or DOCX/ODT document to edit it. Images and PDFs have an **Edit** action in their preview and file menu. Use **Save copy** or **Ctrl/Cmd+S**. The editor saves a new file in the same folder and closes after success. The original is unchanged. Copies are named `name (edited).ext`, `name (edited 2).ext`, and so on; existing files, folders and symlinks are never chosen as a copy destination. Unsaved changes require confirmation before closing. There is no automatic save.
 
 | Editor | Implemented operations | Limits |
 | --- | --- | --- |
@@ -234,9 +238,9 @@ Open a text file or DOCX/ODT document to edit it. Images and PDFs have an **Edit
 | DOCX / ODT | Change existing paragraph and table-cell text, line breaks, tabs and spaces while retaining text-run styles and other package entries | 32 MiB file, 64 MiB uncompressed package, 8 MiB content XML, 3,000 paragraphs, 2 MiB text; one changed paragraph up to 100,000 characters |
 | PDF | Reorder, rotate and remove pages with real locally rendered thumbnails | 32 MiB, 500 pages; at least one page retained; encrypted PDFs, forms and detected signed documents excluded |
 
-Every successful editor save uses the same full-file version mechanism as replacement uploads. The previous contents can be recovered through **Version history**. Saving checks a revision based on file identity, size and nanosecond timestamps; stale changes return HTTP 409. Validation and transformation finish in an internal staging file before replacement. Database failures attempt filesystem rollback. Authenticated saves use the existing session and CSRF protection. The configurable upload limit also applies to saved output.
+Editor saves create independent, visible copies rather than replacing the original. Copies do not inherit the original's share links, favorites or tags. Replacement uploads and explicit version restoration continue to keep previous contents in **Version history**. Saving checks a revision based on file identity, size and nanosecond timestamps; stale changes return HTTP 409. Validation and transformation finish in an internal staging file before installation of the copy. Database failures attempt to remove the incomplete copy. Authenticated saves use the existing session and CSRF protection. The configurable upload limit also applies to saved output.
 
-The photo editor shows a JPEG preview with a maximum 1920-pixel edge. Final processing uses the original image at its full resolution. Transformations apply orientation, clockwise rotation, flip, normalized crop, then color adjustments. Alpha is retained where the output format supports it; available EXIF and ICC data are passed through with orientation and dimensions updated. JPEG/HEIF/WebP/AVIF saves re-encode the image and may change compression, color rendering or auxiliary metadata. The browser's color-filter preview approximates the saved result. Recover the untouched original from its version if needed.
+The photo editor shows a JPEG preview with a maximum 1920-pixel edge. Final processing uses the original image at its full resolution. Transformations apply orientation, clockwise rotation, flip, normalized crop, then color adjustments. Alpha is retained where the output format supports it; available EXIF and ICC data are passed through with orientation and dimensions updated. JPEG/HEIF/WebP/AVIF saves re-encode the image and may change compression, color rendering or auxiliary metadata. The browser's color-filter preview approximates the saved result. The untouched source remains next to the edited copy.
 
 The Office editor changes text, rather than reproducing a word processor's page layout. It does not insert/delete paragraphs or change document styles. Paragraphs containing links, fields, drawings, tracked changes or other complex constructs are locked and preserved. Headers, footers, embedded media and other ZIP entries remain in the file. XML external entities and DTDs are rejected, and package contents are never extracted onto the server filesystem. Existing run styles are retained and inserted text inherits an adjacent run. Detected package signatures are rejected because editing would invalidate them.
 
@@ -272,6 +276,7 @@ backend/app/
     previews.py         Bounded photo conversion and derived thumbnail cache
     metadata.py         Read-only EXIF extraction and display formatting
     editors.py          Bounded text, image, Office XML and PDF transformations
+    creation.py         Empty text files and minimal valid DOCX/ODT packages
     workspace.py        Stable item metadata, version snapshots and batch rollback
 backend/tests/          Isolated API integration tests
 frontend/src/           React, TypeScript, local API client and illustrated UI

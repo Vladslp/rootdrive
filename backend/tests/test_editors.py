@@ -37,18 +37,23 @@ def save(client, path, data, **changes):
     return client.post('/api/editor', json={'path': path, 'revision': data['revision'], 'kind': data['kind'], **changes})
 
 
-def test_text_save_version_conflict_and_line_endings(client, app):
+def test_text_save_copy_conflict_and_line_endings(client, app):
     raw = b'\xef\xbb\xbfhello\r\nworld\r\n'
     upload(client, 'note.md', raw)
+    original = app.state.settings.storage_path / 'note.md'
+    modified = original.stat().st_mtime_ns
     data = read(client, 'note.md')
     assert data['text'] == 'hello\r\nworld\r\n'
     response = save(client, 'note.md', data, text='new\nworld\n')
     assert response.status_code == 200
-    assert client.get('/api/files/download', params={'path': 'note.md'}).content == b'\xef\xbb\xbfnew\r\nworld\r\n'
+    assert response.json()['entry']['path'] == 'note (edited).md'
+    assert client.get('/api/files/download', params={'path': 'note (edited).md'}).content == b'\xef\xbb\xbfnew\r\nworld\r\n'
+    assert original.read_bytes() == raw
+    assert original.stat().st_mtime_ns == modified
+    assert read(client, 'note (edited).md')['revision'] == response.json()['revision']
+    assert client.get('/api/files/versions', params={'path': 'note.md'}).json()['items'] == []
+    original.write_bytes(b'changed externally')
     assert save(client, 'note.md', data, text='stale').status_code == 409
-    versions = client.get('/api/files/versions', params={'path': 'note.md'}).json()['items']
-    assert len(versions) == 1
-    assert (app.state.settings.internal_path / 'versions' / versions[0]['id']).read_bytes() == raw
     assert not list((app.state.settings.internal_path / 'uploads').iterdir())
 
 
@@ -100,12 +105,12 @@ def test_photo_crop_rotate_adjust_and_alpha(client):
     assert preview.status_code == 200
     response = save(client, 'photo.png', data, photo={'rotation': 90, 'flip': True, 'crop': [0, 0, 1, .5], 'brightness': 1.2, 'contrast': .9, 'saturation': .8})
     assert response.status_code == 200, response.text
-    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': 'photo.png'}).content)) as image:
+    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': response.json()['entry']['path']}).content)) as image:
         assert image.size == (40, 40)
         assert image.getpixel((10, 10))[3] == 120
         assert image.getexif()[271] == 'RootDrive Test Camera'
         assert image.getexif()[274] == 1
-    assert save(client, 'photo.png', response.json(), photo={'crop': [.9, 0, .1, 1]}).status_code == 422
+    assert save(client, response.json()['entry']['path'], response.json(), photo={'crop': [.9, 0, .1, 1]}).status_code == 422
 
 
 def test_photo_animation_and_pixel_limit(client, app):
@@ -141,7 +146,7 @@ def test_office_text_preserves_package_and_runs(client, extension):
     response = save(client, 'paper.' + extension, data, paragraphs=[{'id': 0, 'text': 'Hello bright world!'}])
     assert response.status_code == 200, response.text
     assert response.json()['paragraphs'][0]['text'] == 'Hello bright world!'
-    raw = client.get('/api/files/download', params={'path': 'paper.' + extension}).content
+    raw = client.get('/api/files/download', params={'path': response.json()['entry']['path']}).content
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         assert archive.read('unchanged.xml') == b'<preserved/>'
         assert archive.read('word/media/preserved.bin' if extension == 'docx' else 'Pictures/preserved.bin') == b'embedded-object'
@@ -149,7 +154,7 @@ def test_office_text_preserves_package_and_runs(client, extension):
             tree = etree.fromstring(archive.read('word/document.xml'))
             assert len(tree.findall('.//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}b')) == 1
             assert response.json()['paragraphs'][1]['editable'] is False
-            assert save(client, 'paper.docx', response.json(), paragraphs=[{'id': 1, 'text': 'destroy'}]).status_code == 422
+            assert save(client, response.json()['entry']['path'], response.json(), paragraphs=[{'id': 1, 'text': 'destroy'}]).status_code == 422
         else:
             assert archive.infolist()[0].filename == 'mimetype'
             assert archive.infolist()[0].compress_type == zipfile.ZIP_STORED
@@ -185,15 +190,15 @@ def test_pdf_reorder_rotate_delete_and_metadata(client):
     assert data['pages'] == 3
     response = save(client, 'pages.pdf', data, pages=[{'index': 2, 'rotation': 90}, {'index': 0, 'rotation': 0}])
     assert response.status_code == 200, response.text
-    reader = PdfReader(io.BytesIO(client.get('/api/files/download', params={'path': 'pages.pdf'}).content))
+    reader = PdfReader(io.BytesIO(client.get('/api/files/download', params={'path': response.json()['entry']['path']}).content))
     assert len(reader.pages) == 2
     assert reader.pages[0].mediabox.width == 600
     assert reader.pages[0].rotation == 90
     assert reader.pages[1].mediabox.width == 200
     assert reader.metadata.title == 'RootDrive PDF'
-    assert save(client, 'pages.pdf', response.json(), pages=[]).status_code == 422
-    assert save(client, 'pages.pdf', response.json(), pages=[{'index': 0}, {'index': 0}]).status_code == 422
-    assert save(client, 'pages.pdf', response.json(), pages=[{'index': 2}]).status_code == 422
+    assert save(client, response.json()['entry']['path'], response.json(), pages=[]).status_code == 422
+    assert save(client, response.json()['entry']['path'], response.json(), pages=[{'index': 0}, {'index': 0}]).status_code == 422
+    assert save(client, response.json()['entry']['path'], response.json(), pages=[{'index': 2}]).status_code == 422
 
 
 def test_pdf_encrypted_and_damaged(client):
@@ -230,7 +235,7 @@ def test_office_line_breaks_tabs_and_spaces(client, extension):
     assert result.status_code == 200, result.text
     assert result.json()['paragraphs'][0]['text'] == text
     assert result.json()['paragraphs'][0]['editable'] is True
-    result = save(client, 'spaces.' + extension, result.json(), paragraphs=[{'id': 0, 'text': 'Changed again\nwith  spaces'}])
+    result = save(client, result.json()['entry']['path'], result.json(), paragraphs=[{'id': 0, 'text': 'Changed again\nwith  spaces'}])
     assert result.status_code == 200
     assert result.json()['paragraphs'][0]['text'] == 'Changed again\nwith  spaces'
 
@@ -256,10 +261,11 @@ def test_editor_save_rolls_back_on_database_failure(client, app, monkeypatch):
         save(client, 'rollback.txt', data, text='changed')
     assert (app.state.settings.storage_path / 'rollback.txt').read_bytes() == b'original'
     assert not list((app.state.settings.internal_path / 'uploads').iterdir())
-    assert not list((app.state.settings.internal_path / 'versions').iterdir())
+    assert not list((app.state.settings.internal_path / 'versions').glob('*'))
+    assert not (app.state.settings.storage_path / 'rollback (edited).txt').exists()
 
 
-def test_heic_editor_save_and_version(client):
+def test_heic_editor_save_copy_preserves_original(client):
     buffer = io.BytesIO()
     Image.new('RGB', (120, 80), '#739a86').save(buffer, format='HEIF', quality=90)
     raw = buffer.getvalue()
@@ -267,9 +273,10 @@ def test_heic_editor_save_and_version(client):
     data = read(client, 'camera.heic')
     result = save(client, 'camera.heic', data, photo={'rotation': 90, 'crop': [0, 0, 1, 1]})
     assert result.status_code == 200, result.text
-    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': 'camera.heic'}).content)) as image:
+    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': result.json()['entry']['path']}).content)) as image:
         assert image.size == (80, 120)
-    assert len(client.get('/api/files/versions', params={'path': 'camera.heic'}).json()['items']) == 1
+    assert client.get('/api/files/download', params={'path': 'camera.heic'}).content == raw
+    assert client.get('/api/files/versions', params={'path': 'camera.heic'}).json()['items'] == []
 
 
 def test_photo_palette_transparency(client):
@@ -281,7 +288,7 @@ def test_photo_palette_transparency(client):
     data = read(client, 'palette.png')
     result = save(client, 'palette.png', data, photo={'brightness': 1.2})
     assert result.status_code == 200
-    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': 'palette.png'}).content)) as saved:
+    with Image.open(io.BytesIO(client.get('/api/files/download', params={'path': result.json()['entry']['path']}).content)) as saved:
         assert saved.convert('RGBA').getpixel((0, 0))[3] == 0
 
 
@@ -300,3 +307,72 @@ def test_edit_limit_preserves_original(client, app):
     assert save(client, 'limit.txt', data, text='a' * (1024 * 1024 + 1)).status_code == 413
     assert (app.state.settings.storage_path / 'limit.txt').read_bytes() == b'small'
     assert not list((app.state.settings.internal_path / 'uploads').iterdir())
+
+
+def test_copy_names_skip_files_folders_and_symlinks(client, app, tmp_path):
+    upload(client, 'note.txt', b'original')
+    upload(client, 'note (edited).txt', b'keep this copy')
+    root = app.state.settings.storage_path
+    (root / 'note (edited 2).txt').mkdir()
+    outside = tmp_path / 'outside.txt'
+    outside.write_text('private')
+    (root / 'note (edited 3).txt').symlink_to(outside)
+    (root / 'note (edited 4).txt').symlink_to(tmp_path / 'missing')
+    data = read(client, 'note.txt')
+    result = save(client, 'note.txt', data, text='new copy')
+    assert result.status_code == 200
+    assert result.json()['entry']['name'] == 'note (edited 5).txt'
+    result = save(client, 'note.txt', data, text='another copy')
+    assert result.json()['entry']['name'] == 'note (edited 6).txt'
+    assert (root / 'note.txt').read_bytes() == b'original'
+    assert (root / 'note (edited).txt').read_bytes() == b'keep this copy'
+    assert outside.read_text() == 'private'
+
+
+@pytest.mark.parametrize('name', ['Dockerfile', 'Makefile', '.gitignore', '.env.example', '\u0444' * 116 + '.txt'])
+def test_copy_names_remain_safe_and_editable(client, app, name):
+    upload(client, name, b'original')
+    data = read(client, name)
+    result = save(client, name, data, text='copy')
+    assert result.status_code == 200, result.text
+    copy = result.json()['entry']
+    assert len(copy['name'].encode()) <= 240
+    assert read(client, copy['path'])['text'] == 'copy'
+    assert (app.state.settings.storage_path / name).read_bytes() == b'original'
+
+
+def test_edited_copy_stays_in_source_folder(client, app):
+    assert client.post('/api/folders', json={'name': 'Documents'}).status_code == 201
+    assert client.post('/api/files/upload', params={'path': 'Documents'}, files={'files': ('note.md', b'original')}).status_code == 201
+    result = save(client, 'Documents/note.md', read(client, 'Documents/note.md'), text='copy')
+    assert result.status_code == 200
+    assert result.json()['entry']['path'] == 'Documents/note (edited).md'
+    assert (app.state.settings.storage_path / 'Documents/note.md').read_bytes() == b'original'
+
+
+@pytest.mark.parametrize('name,content,changes', [
+    ('source.png', photo_bytes(), {'photo': {'rotation': 90}}),
+    ('source.docx', document_bytes(), {'paragraphs': [{'id': 0, 'text': 'Changed paragraph'}]}),
+    ('source.odt', document_bytes('odt'), {'paragraphs': [{'id': 0, 'text': 'Changed paragraph'}]}),
+    ('source.pdf', pdf_bytes(), {'pages': [{'index': 1, 'rotation': 90}]}),
+])
+def test_all_editors_preserve_source_bytes_and_timestamp(client, app, name, content, changes):
+    upload(client, name, content)
+    original = app.state.settings.storage_path / name
+    modified = original.stat().st_mtime_ns
+    result = save(client, name, read(client, name), **changes)
+    assert result.status_code == 200, result.text
+    assert original.read_bytes() == content
+    assert original.stat().st_mtime_ns == modified
+    assert result.json()['entry']['path'] != name
+    assert (app.state.settings.storage_path / result.json()['entry']['path']).read_bytes() != content
+    assert client.get('/api/files/versions', params={'path': name}).json()['items'] == []
+
+
+def test_editing_a_copy_uses_next_number(client):
+    upload(client, 'note.txt', b'original')
+    first = save(client, 'note.txt', read(client, 'note.txt'), text='copy').json()
+    second = save(client, first['entry']['path'], first, text='next copy')
+    assert second.status_code == 200
+    assert second.json()['entry']['path'] == 'note (edited 2).txt'
+    assert client.get('/api/files/download', params={'path': first['entry']['path']}).content == b'copy'

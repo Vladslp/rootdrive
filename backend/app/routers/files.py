@@ -5,10 +5,11 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
 from ..database import TrashItem
-from ..schemas import FileEntry, FileListing, FolderInput, MoveInput, PathInput, RenameInput, StorageStats, TrashInput
+from ..schemas import CreateFileInput, FileEntry, FileListing, FolderInput, MoveInput, PathInput, RenameInput, StorageStats, TrashInput
+from ..services.creation import create_file_contents
 from ..services.security import require_access
 from ..services.metadata import image_metadata
-from ..services.workspace import enrich, owner_key, relocate_metadata, trash_metadata, restore_metadata, purge_metadata
+from ..services.workspace import install_file, enrich, owner_key, relocate_metadata, trash_metadata, restore_metadata, purge_metadata
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
 
@@ -21,6 +22,23 @@ def list_files(request: Request, path: str = '', q: str = '', recursive: bool = 
         listing = fs.listing(path, q, recursive, sort, direction, offset, limit)
         enrich(db, listing['items'], owner_key(user))
         return listing
+
+
+@router.post('/files', status_code=201, response_model=FileEntry)
+def create_file(body: CreateFileInput, request: Request):
+    fs = request.app.state.fs
+    staged = fs.settings.internal_path / 'uploads' / uuid.uuid4().hex
+    try:
+        with fs.lock, request.app.state.db() as db:
+            parent = fs.path(body.path)
+            if not parent.is_dir():
+                raise HTTPException(400, 'Destination must be a folder')
+            destination = parent / fs.name(body.name)
+            fs.free_destination(destination)
+            create_file_contents(staged, destination)
+            return install_file(fs, db, staged, destination)
+    finally:
+        staged.unlink(missing_ok=True)
 
 
 @router.post('/folders', status_code=201, response_model=FileEntry)

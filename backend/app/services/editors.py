@@ -23,8 +23,9 @@ XML_SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 
 
 def editor_kind(path):
-    extension = path.suffix.lower().lstrip('.')
-    if extension in TEXT_EXTENSIONS or path.name in {'Dockerfile', 'Makefile', '.gitignore', '.env.example'}:
+    name = re.sub(r' \(edited(?: \d+)?\)(?=\.|$)', '', path.name)
+    extension = Path(name).suffix.lower().lstrip('.')
+    if extension in TEXT_EXTENSIONS or name in {'Dockerfile', 'Makefile', '.gitignore', '.env.example'}:
         return 'text'
     if extension in PHOTO_EXTENSIONS:
         return 'photo'
@@ -33,6 +34,20 @@ def editor_kind(path):
     if extension == 'pdf':
         return 'pdf'
     raise HTTPException(415, 'This format is available for preview or download')
+
+
+def copy_destination(fs, original: Path) -> Path:
+    suffix = original.suffix
+    stem = original.name[:-len(suffix)] if suffix else original.name
+    stem = re.sub(r' \(edited(?: \d+)?\)$', '', stem)
+    for number in range(1, 10001):
+        marker = ' (edited)' if number == 1 else f' (edited {number})'
+        budget = 240 - len((marker + suffix).encode('utf-8'))
+        shortened = stem.encode('utf-8')[:budget].decode('utf-8', errors='ignore').rstrip() or 'file'
+        candidate = original.parent / fs.name(shortened + marker + suffix)
+        if not candidate.exists() and not candidate.is_symlink():
+            return candidate
+    raise HTTPException(409, 'Too many edited copies already exist for this filename')
 
 
 def revision(info, path):

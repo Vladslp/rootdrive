@@ -226,7 +226,7 @@ export default function App() {
     writePreference("rootdrive-theme", theme);
     document
       .querySelector("meta[name=theme-color]")
-      ?.setAttribute("content", theme === "dark" ? "#101319" : "#f7f8fb");
+      ?.setAttribute("content", theme === "dark" ? "#202936" : "#f0f3f7");
   }, [theme]);
   useEffect(() => {
     writePreference("rootdrive-layout", layout);
@@ -521,11 +521,13 @@ export default function App() {
           onClick={() => navigate("files")}
           aria-label="RootDrive home"
         >
-          <img
-            className="brand-logo"
-            src="/assets/app-icon.png?v=flat-roots-2"
-            alt=""
-          />
+          <span className="brand-mark">
+            <img
+              className="brand-logo"
+              src="/assets/app-icon.png?v=flat-roots-2"
+              alt=""
+            />
+          </span>
           <span>
             RootDrive<span className="brand-dot">.</span>
           </span>
@@ -657,6 +659,10 @@ export default function App() {
             >
               <Menu size={22} />
             </button>
+            <button className="mobile-brand" onClick={() => navigate("files")} aria-label="RootDrive home">
+              <img src="/assets/app-icon.png?v=flat-roots-2" alt="" />
+              <span>RootDrive</span>
+            </button>
           </div>
           <div className="topbar-right">
             <button
@@ -692,7 +698,6 @@ export default function App() {
         >
           <div className="page-heading">
             <div>
-              <span className="eyebrow">ROOTDRIVE</span>
               <h1>
                 {view === "files" && path ? path.split("/").pop() : title}
               </h1>

@@ -562,10 +562,6 @@ export default function App() {
             </button>
           )}
           {nav("settings", "Settings", <Settings size={19} />)}
-          <div className="sidebar-version">
-            <span className="status-dot" />
-            RootDrive <span>MVP 1.0.0</span>
-          </div>
         </div>
       </aside>
       {sidebar && (
@@ -847,8 +843,8 @@ export default function App() {
                   <CheckSquare size={14} />
                   {selection.length === listing.items.length &&
                   listing.items.length
-                    ? "Deselect page"
-                    : "Select page"}
+                    ? "Deselect all"
+                    : "Select all"}
                 </button>
               </div>
             </>

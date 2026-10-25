@@ -423,19 +423,6 @@ button svg {
   color: var(--text);
   font-weight: 500;
 }
-.sidebar-version {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 9px;
-  padding: 24px 12px 0;
-}
-.sidebar-version > span:last-child {
-  margin-left: auto;
-  font-size: 9px;
-}
-.status-dot,
 .connection-state i {
   width: 5px;
   height: 5px;

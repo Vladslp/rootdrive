@@ -629,7 +629,13 @@ export default function App() {
             </span>
           </div>
         </header>
-        <div className="page-content" key={`${view}:${path}:${activeTag}`}>
+        <div
+          className={
+            "page-content" +
+            (view === "settings" ? " page-content-settings" : "")
+          }
+          key={`${view}:${path}:${activeTag}`}
+        >
           <div className="page-heading">
             <div>
               <span className="eyebrow">ROOTDRIVE</span>
@@ -637,33 +643,6 @@ export default function App() {
                 {view === "files" && path ? path.split("/").pop() : title}
               </h1>
             </div>
-            {view === "files" && (
-              <div className="heading-actions">
-                <button
-                  className="button secondary"
-                  aria-label="New file"
-                  onClick={() => chooseAction("newfile", [])}
-                >
-                  <FilePlus2 size={17} />
-                  <span>New file</span>
-                </button>
-                <button
-                  className="button secondary"
-                  aria-label="New folder"
-                  onClick={() => chooseAction("newfolder", [])}
-                >
-                  <FolderPlus size={17} />
-                  <span>New folder</span>
-                </button>
-                <button
-                  className="button primary"
-                  onClick={() => chooseUpload()}
-                >
-                  <Upload size={17} />
-                  Upload
-                </button>
-              </div>
-            )}
             {view === "storage" && (
               <button className="button secondary" onClick={refresh}>
                 <History size={16} />
@@ -705,6 +684,34 @@ export default function App() {
                 Up to {bytes(account.max_upload_size_mb * 1024 * 1024)} per file
               </span>
             </section>
+          )}
+          {view === "files" && (
+            <div
+              className="file-actions"
+              role="group"
+              aria-label="File actions"
+            >
+              <button
+                className="button secondary"
+                aria-label="New file"
+                onClick={() => chooseAction("newfile", [])}
+              >
+                <FilePlus2 size={17} />
+                <span>New file</span>
+              </button>
+              <button
+                className="button secondary"
+                aria-label="New folder"
+                onClick={() => chooseAction("newfolder", [])}
+              >
+                <FolderPlus size={17} />
+                <span>New folder</span>
+              </button>
+              <button className="button primary" onClick={() => chooseUpload()}>
+                <Upload size={17} />
+                Upload
+              </button>
+            </div>
           )}
           {fileView && (
             <>

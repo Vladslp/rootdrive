@@ -78,6 +78,7 @@ import {
 import { UsersSettings } from "./components/UsersSettings";
 import { UploadLimitSettings } from "./components/UploadLimitSettings";
 import { UploadQueue } from "./components/UploadQueue";
+import { UploadButton } from "./components/UploadButton";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
 const EditorDialog = lazy(() => import("./components/EditorDialog"));
@@ -687,27 +688,6 @@ export default function App() {
             )}
           </div>
           {view === "files" && (
-            <section className="dropzone" aria-label="Upload drop area">
-              <div className="dropzone-symbol">
-                <Upload size={24} strokeWidth={1.6} />
-                <span>+</span>
-              </div>
-              <div>
-                <strong>Drag & drop files</strong>
-                <p>
-                  or{" "}
-                  <button onClick={() => chooseUpload()}>browse files</button> ·{" "}
-                  <button onClick={() => chooseUpload(true)}>
-                    upload folder
-                  </button>
-                </p>
-              </div>
-              <span className="dropzone-limit">
-                Up to {bytes(account.max_upload_size_mb * 1024 * 1024)} per file
-              </span>
-            </section>
-          )}
-          {view === "files" && (
             <div
               className="file-actions"
               role="group"
@@ -729,10 +709,7 @@ export default function App() {
                 <FolderPlus size={17} />
                 <span>New folder</span>
               </button>
-              <button className="button primary" onClick={() => chooseUpload()}>
-                <Upload size={17} />
-                Upload
-              </button>
+              <UploadButton choose={chooseUpload} />
             </div>
           )}
           {fileView && (

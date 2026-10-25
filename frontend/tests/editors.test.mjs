@@ -35,7 +35,7 @@ globalThis.Image = class {
 const require = createRequire(import.meta.url);
 const components = fileURLToPath(new URL("../src/components/", import.meta.url));
 const bundle = await build({
-  stdin: { contents: 'export { PhotoEditor } from "./PhotoEditor"; export { PhotoViewport } from "./PhotoViewport"; export { NewFileDialog, ShareDialog } from "./FileDialogs"; export { default as EditorDialog } from "./EditorDialog";', resolveDir: components, loader: "tsx" },
+  stdin: { contents: 'export { PhotoEditor } from "./PhotoEditor"; export { PhotoViewport } from "./PhotoViewport"; export { NewFileDialog, ShareDialog } from "./FileDialogs"; export { TagDeleteDialog } from "./TagDeleteDialog"; export { default as EditorDialog } from "./EditorDialog";', resolveDir: components, loader: "tsx" },
   bundle: true,
   format: "esm",
   platform: "node",
@@ -56,7 +56,7 @@ try {
 } finally {
   await rm(compiledDirectory, { recursive: true, force: true });
 }
-const { PhotoEditor, PhotoViewport, NewFileDialog, ShareDialog, EditorDialog } = compiled;
+const { PhotoEditor, PhotoViewport, NewFileDialog, ShareDialog, TagDeleteDialog, EditorDialog } = compiled;
 const { createRoot } = await import("react-dom/client");
 let root, host, requests, saved;
 const defaults = { rotation: 0, flip: false, crop: [0, 0, 1, 1], brightness: 1, contrast: 1, saturation: 1 };
@@ -89,7 +89,7 @@ beforeEach(() => {
   drawCount = 0;
   globalThis.fetch = async (url, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : null;
-    requests.push({ url, body });
+    requests.push({ url, body, method: options.method });
     return { ok: true, json: async () => body ? { kind: "text", revision: "b".repeat(64), text: body.text, entry: { ...entry, path: body.mode === "copy" ? "note (edited).txt" : entry.path } } : { kind: "text", revision: "a".repeat(64), text: "old", format: "txt" } };
   };
 });
@@ -183,4 +183,23 @@ test("created share links can be copied on HTTP without the Clipboard API", asyn
   await act(async () => click("Copy link"));
   assert.equal(copied, true);
   assert.ok(host.textContent.includes("Copied"));
+});
+test("tag deletion requires confirmation and only calls the tag endpoint", async () => {
+  let removed = false;
+  await render(h(TagDeleteDialog, { tag: { id: "tag-123", name: "Travel", color: "blue" }, close() {}, removed: () => { removed = true; } }));
+  assert.equal(requests.length, 0);
+  await act(async () => click("Delete tag"));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, "/api/tags/tag-123");
+  assert.equal(requests[0].method, "DELETE");
+  assert.equal(removed, true);
+});
+test("a failed tag deletion keeps the dialog open with an error", async () => {
+  let removed = false;
+  globalThis.fetch = async () => ({ ok: false, status: 503, json: async () => ({ error: { message: "Storage unavailable" } }) });
+  await render(h(TagDeleteDialog, { tag: { id: "tag-123", name: "Travel", color: "blue" }, close() {}, removed: () => { removed = true; } }));
+  await act(async () => click("Delete tag"));
+  assert.equal(removed, false);
+  assert.equal(host.querySelector('[role="alert"]').textContent, "Storage unavailable");
+  assert.equal([...host.querySelectorAll("button")].find((node) => node.textContent === "Delete tag").disabled, false);
 });

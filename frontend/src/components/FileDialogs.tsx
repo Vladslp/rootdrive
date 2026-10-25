@@ -8,6 +8,8 @@ import {
   Folder,
   FolderInput,
   History,
+  Info,
+  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -787,6 +789,7 @@ export function PreviewDialog({
         <span>{bytes(entry.size)}</span>
         {share && (
           <button className="button secondary" onClick={share}>
+            <Link2 size={16} />
             Share link
           </button>
         )}
@@ -797,6 +800,7 @@ export function PreviewDialog({
           </button>
         )}
         <button className="button secondary" onClick={properties}>
+          <Info size={16} />
           Properties
         </button>
         <button

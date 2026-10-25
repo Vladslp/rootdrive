@@ -258,6 +258,8 @@ Folder cards, list rows and properties show recursive file size and immediate it
 
 ## Interface and motion
 
+Right-click a tag in the sidebar or on a file card and choose **Delete tag** to remove it after confirmation. This removes the tag and its file associations. Shift+F10 or the context-menu key opens the same menu for a focused tag. Deleting the currently viewed tag returns to My files.
+
 On desktop, drag from blank space around or below the file cards/rows to select them with a rectangle. Ctrl, Cmd or Shift adds to the current selection; an ordinary blank click clears it. Esc cancels the active gesture and restores its starting selection. Dragging near the viewport edge scrolls the page. This works in grid and list views for the current page, including Favorites and tag collections. Buttons, file opening, menus and text fields retain their normal behavior; touch scrolling and checkbox selection remain available on phones.
 
 Language and document file types use a transparent twelve-icon ImageGen atlas in both the New file picker and file cards. Storage uses one transparent, six-icon ImageGen sprite atlas for files, Trash, Versions, Temporary, System and free space. The light and dark themes share the same artwork. Cards enter with a short stagger; navigation, dialogs, menus, notifications, theme controls and upload progress use brief transitions. Hover motion is limited to fine pointers. All animation and transitions are disabled under `prefers-reduced-motion: reduce`. The header shows **Running** without duplicating the current page title.

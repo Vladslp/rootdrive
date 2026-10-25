@@ -6,6 +6,8 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -79,6 +81,7 @@ import { UsersSettings } from "./components/UsersSettings";
 import { UploadLimitSettings } from "./components/UploadLimitSettings";
 import { UploadQueue } from "./components/UploadQueue";
 import { UploadButton } from "./components/UploadButton";
+import { TagDeleteDialog } from "./components/TagDeleteDialog";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
 const EditorDialog = lazy(() => import("./components/EditorDialog"));
@@ -115,6 +118,8 @@ export default function App() {
   const [activeTag, setActiveTag] = useState("");
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagManager, setTagManager] = useState(false);
+  const [tagContext, setTagContext] = useState<{ tag: Tag; x: number; y: number } | null>(null);
+  const [tagToDelete, setTagToDelete] = useState<Tag | null>(null);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [recursive, setRecursive] = useState(false);
@@ -165,6 +170,8 @@ export default function App() {
       !error &&
       !modal &&
       !tagManager &&
+      !tagContext &&
+      !tagToDelete &&
       !context &&
       !dragging,
     scope: `${view}:${path}:${activeTag}:${search}:${offset}:${layout}:${revision}`,
@@ -303,8 +310,8 @@ export default function App() {
     folderInput.current?.setAttribute("webkitdirectory", "");
   }, [ready]);
   useEffect(() => {
-    if (!context) return;
-    const close = () => setContext(null);
+    if (!context && !tagContext) return;
+    const close = () => { setContext(null); setTagContext(null); };
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
@@ -318,12 +325,14 @@ export default function App() {
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("keydown", key);
     };
-  }, [context]);
+  }, [context, tagContext]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (
         modal ||
         tagManager ||
+        tagToDelete ||
+        tagContext ||
         (event.target as HTMLElement)?.closest(
           "input,textarea,select,[contenteditable]",
         )
@@ -352,7 +361,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, tagManager, fileView, selectionView, view, listing.items]);
+  }, [modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items]);
   function navigate(next: View, destination = "", tag = "") {
     window.scrollTo({ top: 0, behavior: "instant" });
     setView(next);
@@ -364,6 +373,32 @@ export default function App() {
     setSelection([]);
     setSidebar(false);
     setContext(null);
+    setTagContext(null);
+  }
+  function tagMenuProps(tag: Tag) {
+    function show(x: number, y: number) {
+      setContext(null);
+      setTagContext({
+        tag,
+        x: Math.max(8, Math.min(x, window.innerWidth - 236)),
+        y: Math.max(8, Math.min(y, window.innerHeight - 64)),
+      });
+    }
+    return {
+      onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        show(event.clientX, event.clientY);
+      },
+      onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          event.preventDefault();
+          event.stopPropagation();
+          const rect = event.currentTarget.getBoundingClientRect();
+          show(rect.left, rect.bottom + 4);
+        }
+      },
+    };
   }
   function done(message = "Saved") {
     setModal(null);
@@ -519,6 +554,7 @@ export default function App() {
           {tags.slice(0, 12).map((tag) => (
             <button
               key={tag.id}
+              {...tagMenuProps(tag)}
               className={
                 "nav-link tag-link " +
                 (view === "tag" && activeTag === tag.id ? "active" : "")
@@ -940,6 +976,7 @@ export default function App() {
                       onContextMenu={(event) => {
                         if (view === "trash") return;
                         event.preventDefault();
+                        setTagContext(null);
                         setContext({
                           entry,
                           x: Math.min(event.clientX, window.innerWidth - 240),
@@ -1018,6 +1055,7 @@ export default function App() {
                             }
                             const rect =
                               event.currentTarget.getBoundingClientRect();
+                            setTagContext(null);
                             setContext({
                               entry,
                               x: Math.max(
@@ -1064,6 +1102,7 @@ export default function App() {
                               <button
                                 className={"tag-pill " + tag.color}
                                 key={tag.id}
+                                {...tagMenuProps(tag)}
                                 onClick={() => navigate("tag", "", tag.id)}
                               >
                                 {tag.name}
@@ -1386,6 +1425,42 @@ export default function App() {
           </div>
         ))}
       </div>
+      {tagContext && (
+        <div
+          role="menu"
+          aria-label={"Tag actions for " + tagContext.tag.name}
+          className="context-menu"
+          style={{ left: tagContext.x, top: tagContext.y }}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            role="menuitem"
+            className="danger-text"
+            autoFocus
+            onClick={() => {
+              setTagToDelete(tagContext.tag);
+              setTagContext(null);
+            }}
+          >
+            <Trash2 size={16} />
+            Delete tag
+          </button>
+        </div>
+      )}
+      {tagToDelete && (
+        <TagDeleteDialog
+          tag={tagToDelete}
+          close={() => setTagToDelete(null)}
+          removed={() => {
+            setTags((current) => current.filter((tag) => tag.id !== tagToDelete.id));
+            if (view === "tag" && activeTag === tagToDelete.id) navigate("files");
+            setTagToDelete(null);
+            refresh();
+            notify("Tag deleted");
+          }}
+        />
+      )}
       {context && contextEntry && (
         <div
           role="menu"

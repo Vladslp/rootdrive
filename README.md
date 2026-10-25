@@ -250,6 +250,8 @@ Old binary Office formats, XLSX, PPTX, rich-text RTF, video/audio editing, OCR, 
 
 ## Interface and motion
 
+On desktop, drag from blank space around or below the file cards/rows to select them with a rectangle. Ctrl, Cmd or Shift adds to the current selection; an ordinary blank click clears it. Esc cancels the active gesture and restores its starting selection. Dragging near the viewport edge scrolls the page. This works in grid and list views for the current page, including Favorites and tag collections. Buttons, file opening, menus and text fields retain their normal behavior; touch scrolling and checkbox selection remain available on phones.
+
 Storage uses one transparent, six-icon ImageGen sprite atlas for files, Trash, Versions, Temporary, System and free space. The light and dark themes share the same artwork. Cards enter with a short stagger; navigation, dialogs, menus, notifications, theme controls and upload progress use brief transitions. Hover motion is limited to fine pointers. All animation and transitions are disabled under `prefers-reduced-motion: reduce`. The header shows **Running** without duplicating the current page title.
 
 ## Python architecture
@@ -347,8 +349,11 @@ Listings accept `sort=name|size|type|modified`, `direction=asc|desc`, `offset` a
 ```bash
 source .venv/bin/activate
 pytest -q
+npm --prefix frontend test
 npm --prefix frontend run build
 ```
+
+Frontend interaction tests mount the selection hook in an isolated DOM and cover rectangle resizing, Ctrl/Cmd/Shift addition, Esc, pointer cancellation, blank clicks, touch/control exclusions, autoscroll and navigation cleanup. These run without a browser, server or user files.
 
 Tests use temporary storage directories and temporary SQLite databases, never your workspace files. Coverage includes file lifecycle, conflicts, restoration, permanent deletion, unsafe names, traversal, symlink escapes, streaming upload limits, failed-batch cleanup, search/pagination, previews, stats, optional authentication, CSRF, administrator restrictions, public sharing, revocation/expiry and restart persistence. Additional tests cover resumable folder transfers across restart, stale offsets, source-prefix checks, cancelled/empty uploads, chunk limits, overwrite conflicts, original-file changes, version restore, rollback on database failure, metadata lifecycle, tag filtering, batch overlap/conflicts, ZIP content/symlink isolation, media ranges, storage breakdown and per-account transfer/favorite/export access. Settings tests verify live limits, restart persistence, strict validation, administrator/CSRF enforcement, pending-transfer limits and request-body guards. Shutdown tests use separate processes and temporary project directories to verify graceful stop, project isolation and duplicate-server protection.
 

@@ -8,6 +8,8 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
+import { useMarqueeSelection } from "./hooks/useMarqueeSelection";
 import {
   ArrowDown,
   ArrowUp,
@@ -152,6 +154,20 @@ export default function App() {
   const mainSearch = useRef<HTMLInputElement>(null);
   const ready = Boolean(account && (!account.auth_enabled || account.user));
   const fileView = ["files", "favorites", "tag"].includes(view);
+  const marquee = useMarqueeSelection({
+    enabled:
+      ready &&
+      fileView &&
+      !loading &&
+      !error &&
+      !modal &&
+      !tagManager &&
+      !context &&
+      !dragging,
+    scope: `${view}:${path}:${activeTag}:${search}:${offset}:${layout}:${revision}`,
+    selection,
+    change: setSelection,
+  });
   const selected = listing.items.filter((item) =>
     selection.includes(item.path),
   );
@@ -559,7 +575,13 @@ export default function App() {
         />
       )}
       <main
-        className={"main " + (dragging ? "is-dragging" : "")}
+        ref={marquee.container}
+        onPointerDown={marquee.pointerDown}
+        className={
+          "main " +
+          (dragging ? "is-dragging " : "") +
+          (marquee.rectangle ? "is-selecting-files" : "")
+        }
         onDragEnter={(event) => {
           if (view === "files" && event.dataTransfer.types.includes("Files")) {
             event.preventDefault();
@@ -909,6 +931,7 @@ export default function App() {
                   {listing.items.map((entry, index) => (
                     <article
                       key={entry.id || entry.path}
+                      data-selection-path={entry.path}
                       style={{
                         animationDelay: Math.min(index, 10) * 24 + "ms",
                       }}
@@ -1336,6 +1359,20 @@ export default function App() {
         }}
       />
       <UploadQueue queue={queue} notify={notify} />
+      {marquee.rectangle &&
+        createPortal(
+          <div
+            className="selection-marquee"
+            aria-hidden="true"
+            style={{
+              left: marquee.rectangle.left,
+              top: marquee.rectangle.top,
+              width: marquee.rectangle.right - marquee.rectangle.left,
+              height: marquee.rectangle.bottom - marquee.rectangle.top,
+            }}
+          />,
+          document.body,
+        )}
       <div className="toast-stack" aria-live="polite">
         {toasts.map((toast) => (
           <div className="toast" key={toast.id}>

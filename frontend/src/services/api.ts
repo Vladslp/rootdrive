@@ -11,8 +11,9 @@ export type Entry = {
   tags?: Tag[];
   color?: string | null;
   version_count?: number;
+  child_count?: number | null;
 };
-export type Listing = { items: Entry[]; total: number };
+export type Listing = { items: Entry[]; total: number; revision?: string };
 export type Account = {
   auth_enabled: boolean;
   shares_enabled: boolean;

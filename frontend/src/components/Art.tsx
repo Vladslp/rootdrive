@@ -3,9 +3,11 @@ import type { Entry } from "../services/api";
 export function Art({
   kind,
   className = "",
+  emptyFolder = false,
 }: {
   kind: string;
   className?: string;
+  emptyFolder?: boolean;
 }) {
   const icons: Record<string, [string, number, number]> = {
     folder: ["folders", 0, 0],
@@ -24,6 +26,18 @@ export function Art({
     slides: ["extra", 1, 0],
     code: ["extra", 0, 1],
     file: ["extra", 1, 1],
+    text: ["file-types", 0, 0],
+    markdown: ["file-types", 1, 0],
+    word: ["file-types", 2, 0],
+    opendocument: ["file-types", 3, 0],
+    json: ["file-types", 0, 1],
+    csv: ["file-types", 1, 1],
+    python: ["file-types", 2, 1],
+    javascript: ["file-types", 3, 1],
+    html: ["file-types", 0, 2],
+    css: ["file-types", 1, 2],
+    typescript: ["file-types", 2, 2],
+    sql: ["file-types", 3, 2],
   };
   const icon = icons[kind];
   if (!icon) {
@@ -41,14 +55,18 @@ export function Art({
       </div>
     );
   }
+  const columns = icon[0] === "file-types" ? 4 : icon[0] === "extra" ? 2 : 3;
+  const rows = icon[0] === "file-types" ? 3 : 2;
   return (
     <div
       aria-hidden="true"
       className={"art " + className}
       style={{
-        backgroundImage: `url(/assets/${icon[0]}.png)`,
-        backgroundSize: icon[0] === "extra" ? "200% 200%" : "300% 200%",
-        backgroundPosition: `${icon[1] * (icon[0] === "extra" ? 100 : 50)}% ${icon[2] * 100}%`,
+        backgroundImage: `url(/assets/${emptyFolder && icon[0] === "folders" ? "empty-folders" : icon[0]}.png${icon[0] === "file-types" ? "?v=clean-2" : ""})`,
+        backgroundSize: icon[0] === "file-types" ? `${1448 / 320 * 100}% ${1086 / 342 * 100}%` : `${columns * 100}% ${rows * 100}%`,
+        backgroundPosition: icon[0] === "file-types"
+          ? `${(68 + icon[1] * 342) / (1448 - 320) * 100}% ${(34 + icon[2] * 335) / (1086 - 342) * 100}%`
+          : `${icon[1] * 100 / (columns - 1)}% ${icon[2] * 100 / (rows - 1)}%`,
       }}
     />
   );
@@ -68,6 +86,14 @@ export function kindOf(entry: Entry) {
     return ["folder", "lavender", "yellow", "mint"][index];
   }
   const ext = entry.name.split(".").pop()?.toLowerCase() || "";
+  const fileTypes: Record<string, string> = {
+    txt: "text", log: "text", md: "markdown", markdown: "markdown",
+    docx: "word", odt: "opendocument", json: "json", jsonl: "json",
+    csv: "csv", tsv: "csv", py: "python", js: "javascript", jsx: "javascript",
+    html: "html", htm: "html", css: "css", scss: "css", ts: "typescript",
+    tsx: "typescript", sql: "sql",
+  };
+  if (fileTypes[ext]) return fileTypes[ext];
   if (
     entry.mime?.startsWith("image/") ||
     /^(jpg|jpeg|png|webp|gif|svg|heic|avif|raw)$/.test(ext)

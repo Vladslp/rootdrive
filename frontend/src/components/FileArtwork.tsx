@@ -36,5 +36,5 @@ export function FileArtwork({
         onError={() => setFailed(true)}
       />
     );
-  return <Art kind={kindOf(entry)} />;
+  return <Art kind={kindOf(entry)} emptyFolder={entry.type === "folder" && entry.child_count === 0} />;
 }

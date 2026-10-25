@@ -20,6 +20,7 @@ class Filesystem:
         self.lock = RLock()
         self.stats_cache = None
         self.stats_time = 0.0
+        self.folder_cache = {}
 
     def name(self, value: str) -> str:
         if not value or value in {'.', '..'} or value != value.strip() or len(value.encode()) > 240:
@@ -49,10 +50,51 @@ class Filesystem:
     def relative(self, path: Path) -> str:
         return path.relative_to(self.root).as_posix()
 
-    def entry(self, path: Path) -> dict:
+    def folder_details(self, path: Path) -> dict:
+        now = time.monotonic()
+        key = (self.relative(path), path.stat(follow_symlinks=False).st_mtime_ns)
+        cached = self.folder_cache.get(key)
+        if cached and now - cached[0] < 30:
+            return cached[1]
+        pending = [(path, False)]
+        totals = {}
+        children = {}
+        while pending:
+            current, visited = pending.pop()
+            if visited:
+                size, count, folders = children.pop(current)
+                totals[current] = {'size': size + sum(totals[folder]['size'] for folder in folders), 'child_count': count}
+                continue
+            count, size, folders = 0, 0, []
+            with os.scandir(current) as entries:
+                for item in entries:
+                    if item.name == '.DS_Store' or item.is_symlink():
+                        continue
+                    try:
+                        if item.is_file(follow_symlinks=False):
+                            size += item.stat(follow_symlinks=False).st_size
+                            count += 1
+                        elif item.is_dir(follow_symlinks=False):
+                            folders.append(Path(item.path))
+                            count += 1
+                    except FileNotFoundError:
+                        continue
+            children[current] = (size, count, folders)
+            pending.append((current, True))
+            pending.extend((folder, False) for folder in folders)
+        if len(self.folder_cache) + len(totals) > 4096:
+            self.folder_cache.clear()
+        for folder, details in list(totals.items())[-4096:]:
+            self.folder_cache[(self.relative(folder), folder.stat(follow_symlinks=False).st_mtime_ns)] = (now, details)
+        return totals[path]
+
+    def entry(self, path: Path, folder_details: bool = True) -> dict:
         info = path.stat(follow_symlinks=False)
         folder = stat.S_ISDIR(info.st_mode)
-        return {'name': path.name, 'path': self.relative(path), 'type': 'folder' if folder else 'file', 'size': 0 if folder else info.st_size, 'modified': info.st_mtime, 'mime': 'inode/directory' if folder else (mimetypes.guess_type(path.name)[0] or 'application/octet-stream')}
+        entry = {'name': path.name, 'path': self.relative(path), 'type': 'folder' if folder else 'file', 'size': 0 if folder else info.st_size, 'modified': info.st_mtime, 'mime': 'inode/directory' if folder else (mimetypes.guess_type(path.name)[0] or 'application/octet-stream')}
+        if folder and folder_details:
+            entry.update(self.folder_details(path))
+        return entry
 
     def walk(self, directory: Path, recursive: bool):
         with os.scandir(directory) as entries:
@@ -78,7 +120,7 @@ class Filesystem:
                 if query.casefold() not in item.name.casefold():
                     continue
                 try:
-                    entry = self.entry(item)
+                    entry = self.entry(item, folder_details=sort == 'size')
                 except FileNotFoundError:
                     continue
                 total += 1
@@ -90,6 +132,9 @@ class Filesystem:
 
         select = heapq.nlargest if direction == 'desc' else heapq.nsmallest
         page = select(offset + limit, candidates(), key=key)[offset:]
+        for entry in page:
+            if entry['type'] == 'folder' and 'child_count' not in entry:
+                entry.update(self.folder_details(self.root / entry['path']))
         return {'items': page, 'total': total, 'offset': offset, 'limit': limit, 'path': path}
 
     def free_destination(self, destination: Path):
@@ -98,6 +143,7 @@ class Filesystem:
 
     def invalidate(self):
         self.stats_time = 0
+        self.folder_cache.clear()
 
     def stats(self):
         with self.lock:

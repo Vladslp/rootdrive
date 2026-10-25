@@ -250,7 +250,8 @@ def test_pdf_range_for_editor(client):
     assert client.head('/api/files/media', params={'path': 'range.pdf'}).headers['content-length'] == str(len(raw))
 
 
-def test_editor_save_rolls_back_on_database_failure(client, app, monkeypatch):
+@pytest.mark.parametrize('mode', ['copy', 'original'])
+def test_editor_save_rolls_back_on_database_failure(client, app, monkeypatch, mode):
     from sqlalchemy.orm import Session
     upload(client, 'rollback.txt', b'original')
     data = read(client, 'rollback.txt')
@@ -258,11 +259,46 @@ def test_editor_save_rolls_back_on_database_failure(client, app, monkeypatch):
         raise RuntimeError('simulated database failure')
     monkeypatch.setattr(Session, 'commit', fail_commit)
     with pytest.raises(RuntimeError):
-        save(client, 'rollback.txt', data, text='changed')
+        save(client, 'rollback.txt', data, text='changed', mode=mode)
     assert (app.state.settings.storage_path / 'rollback.txt').read_bytes() == b'original'
     assert not list((app.state.settings.internal_path / 'uploads').iterdir())
     assert not list((app.state.settings.internal_path / 'versions').glob('*'))
     assert not (app.state.settings.storage_path / 'rollback (edited).txt').exists()
+
+
+@pytest.mark.parametrize('name,content,changes', [
+    ('source.txt', b'original', {'text': 'changed'}),
+    ('source.png', photo_bytes(), {'photo': {'rotation': 90, 'brightness': .5}}),
+    ('source.docx', document_bytes(), {'paragraphs': [{'id': 0, 'text': 'Changed paragraph'}]}),
+    ('source.odt', document_bytes('odt'), {'paragraphs': [{'id': 0, 'text': 'Changed paragraph'}]}),
+    ('source.pdf', pdf_bytes(), {'pages': [{'index': 1, 'rotation': 90}]}),
+])
+def test_save_original_preserves_recoverable_version(client, app, name, content, changes):
+    upload(client, name, content)
+    data = read(client, name)
+    result = save(client, name, data, mode='original', **changes)
+    assert result.status_code == 200, result.text
+    assert result.json()['entry']['path'] == name
+    assert result.json()['mode'] == 'original'
+    assert (app.state.settings.storage_path / name).read_bytes() != content
+    assert read(client, name)['revision'] == result.json()['revision']
+    assert len(list(app.state.settings.storage_path.iterdir())) == 1
+    versions = client.get('/api/files/versions', params={'path': name}).json()['items']
+    assert len(versions) == 1
+    assert (app.state.settings.internal_path / 'versions' / versions[0]['id']).read_bytes() == content
+    assert save(client, name, data, mode='original', **changes).status_code == 409
+    assert client.post('/api/versions/' + versions[0]['id'] + '/restore').status_code == 200
+    assert (app.state.settings.storage_path / name).read_bytes() == content
+
+
+def test_original_save_rejects_invalid_mode_and_limit_without_versions(client, app):
+    upload(client, 'note.txt', b'original')
+    data = read(client, 'note.txt')
+    assert save(client, 'note.txt', data, mode='overwrite', text='changed').status_code == 422
+    app.state.settings.max_upload_size_mb = 1
+    assert save(client, 'note.txt', data, mode='original', text='x' * (1024 * 1024 + 1)).status_code == 413
+    assert (app.state.settings.storage_path / 'note.txt').read_bytes() == b'original'
+    assert client.get('/api/files/versions', params={'path': 'note.txt'}).json()['items'] == []
 
 
 def test_heic_editor_save_copy_preserves_original(client):

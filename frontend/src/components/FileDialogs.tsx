@@ -1,8 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
   Check,
   ChevronRight,
+  Copy,
   Download,
   Folder,
   FolderInput,
@@ -29,6 +30,7 @@ import { Dialog } from "./Dialog";
 import { Art, kindOf } from "./Art";
 import { FileArtwork, isPhoto } from "./FileArtwork";
 import { ImageDetails } from "./ImageDetails";
+import { PhotoViewport } from "./PhotoViewport";
 
 export type FileAction =
   | "edit"
@@ -42,8 +44,14 @@ export type FileAction =
   | "preview"
   | "versions"
   | "share"
-  | "purge";
-export type Modal = { action: FileAction; entries: Entry[] };
+  | "purge"
+  | "emptytrash";
+export type Modal = {
+  action: FileAction;
+  entries: Entry[];
+  trashRevision?: string;
+  total?: number;
+};
 const colors = ["blue", "green", "amber", "rose", "violet", "slate"];
 
 export function NameDialog({
@@ -147,6 +155,7 @@ export function NewFileDialog({
   return (
     <Dialog
       title="New file"
+      className="new-file-dialog"
       close={() => {
         if (!busy) close();
       }}
@@ -164,31 +173,40 @@ export function NewFileDialog({
             onFocus={(event) => event.target.select()}
           />
         </label>
-        <label className="field-label">
-          File type
-          <select
-            value={extension}
-            disabled={busy}
-            onChange={(event) => setExtension(event.target.value)}
-          >
+        <fieldset className="file-type-picker" disabled={busy}>
+          <legend>File type</legend>
+          <div className="file-type-grid">
             {[
-              ["txt", "Text"],
-              ["md", "Markdown"],
-              ["docx", "Document"],
-              ["odt", "OpenDocument"],
-              ["json", "JSON"],
-              ["csv", "CSV"],
-              ["py", "Python"],
-              ["js", "JavaScript"],
-              ["html", "HTML"],
-              ["css", "CSS"],
-            ].map(([value, label]) => (
-              <option key={value} value={value}>
-                {label} · .{value}
-              </option>
+              ["txt", "Text", "text", "slate"],
+              ["md", "Markdown", "markdown", "violet"],
+              ["docx", "Document", "word", "blue"],
+              ["odt", "OpenDocument", "opendocument", "green"],
+              ["json", "JSON", "json", "amber"],
+              ["csv", "CSV", "csv", "green"],
+              ["py", "Python", "python", "blue"],
+              ["js", "JavaScript", "javascript", "amber"],
+              ["html", "HTML", "html", "rose"],
+              ["css", "CSS", "css", "violet"],
+            ].map(([value, label, art, color]) => (
+              <label
+                key={value}
+                className={"file-type-option " + color + (extension === value ? " selected" : "")}
+              >
+                <input
+                  type="radio"
+                  name="file-type"
+                  value={value}
+                  checked={extension === value}
+                  onChange={() => setExtension(value)}
+                  aria-label={label + " (." + value + ")"}
+                />
+                <Art kind={art} />
+                <span><strong>{label}</strong><small>.{value}</small></span>
+                {extension === value && <Check size={13} className="file-type-check" />}
+              </label>
             ))}
-          </select>
-        </label>
+          </div>
+        </fieldset>
         {error && (
           <p className="error-text" role="alert">
             {error}
@@ -679,7 +697,8 @@ export function PropertiesDialog({
                 entry.name.split(".").pop()?.toUpperCase() ||
                 "File",
           ],
-          ["Size", entry.type === "folder" ? "—" : bytes(entry.size)],
+          ["Size", bytes(entry.size)],
+          ...(entry.type === "folder" && entry.child_count != null ? [["Items", String(entry.child_count)]] : []),
           ["Modified", new Date(entry.modified * 1000).toLocaleString("en")],
           ["Path", "/" + entry.path],
           ["Versions", String(entry.version_count || 0)],
@@ -709,13 +728,16 @@ export function PreviewDialog({
   close,
   properties,
   edit,
+  share,
 }: {
   entry: Entry;
   close: () => void;
   properties: () => void;
   edit: () => void;
+  share?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
+  const [size, setSize] = useState({ width: 1, height: 1 });
   const kind = kindOf(entry);
   const url = "/api/files/media?path=" + encodeURIComponent(entry.path);
   return (
@@ -726,11 +748,14 @@ export function PreviewDialog({
             Your browser cannot preview this format. Download the original file.
           </p>
         ) : isPhoto(entry) ? (
+          <PhotoViewport width={size.width} height={size.height}>
           <img
             src={fileURL(entry, true)}
             alt={entry.name}
             onError={() => setFailed(true)}
+            onLoad={(event) => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
           />
+          </PhotoViewport>
         ) : kind === "pdf" ? (
           <iframe src={fileURL(entry, true)} title={entry.name} />
         ) : kind === "videos" ? (
@@ -760,6 +785,11 @@ export function PreviewDialog({
       </div>
       <div className="preview-actions">
         <span>{bytes(entry.size)}</span>
+        {share && (
+          <button className="button secondary" onClick={share}>
+            Share link
+          </button>
+        )}
         {canEdit(entry) && (
           <button className="button secondary" onClick={edit}>
             <Pencil size={16} />
@@ -790,10 +820,13 @@ export function ShareDialog({
 }) {
   const [hours, setHours] = useState("24");
   const [link, setLink] = useState("");
+  const [copied, setCopied] = useState(false);
+  const linkInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function create() {
     setBusy(true);
+    setError("");
     try {
       const result = await api<{ url: string }>("/shares", "POST", {
         path: entry.path,
@@ -807,7 +840,7 @@ export function ShareDialog({
     }
   }
   return (
-    <Dialog title="Share file" close={close}>
+    <Dialog title="Share file" close={() => { if (!busy) close(); }}>
       <p className="share-warning">
         Anyone with the link can download this file.
       </p>
@@ -815,7 +848,7 @@ export function ShareDialog({
       {link ? (
         <label className="field-label">
           Share link
-          <input readOnly value={link} onFocus={(e) => e.target.select()} />
+          <input ref={linkInput} readOnly value={link} onFocus={(e) => e.target.select()} />
         </label>
       ) : (
         <label className="field-label">
@@ -834,12 +867,34 @@ export function ShareDialog({
         </p>
       )}
       <div className="dialog-actions">
-        <button className="button secondary" onClick={close}>
+        <button className="button secondary" onClick={close} disabled={busy}>
           Close
         </button>
         {!link && (
           <button className="button primary" onClick={create} disabled={busy}>
             Create link
+          </button>
+        )}
+        {link && (
+          <button
+            className="button primary"
+            onClick={async () => {
+              try {
+                if (navigator.clipboard?.writeText) {
+                  await navigator.clipboard.writeText(link);
+                } else {
+                  linkInput.current?.select();
+                  if (!document.execCommand("copy")) throw new Error("Copy unavailable");
+                }
+                setCopied(true);
+                setError("");
+              } catch {
+                setError("Select and copy the link above");
+              }
+            }}
+          >
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? "Copied" : "Copy link"}
           </button>
         )}
       </div>

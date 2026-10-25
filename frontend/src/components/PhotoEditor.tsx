@@ -7,6 +7,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { type PhotoEdits } from "../services/editor";
+import { PhotoViewport } from "./PhotoViewport";
 
 export function PhotoEditor({
   path,
@@ -67,7 +68,6 @@ export function PhotoEditor({
     target.width = Math.round(width);
     target.height = Math.round(height);
     const output = target.getContext("2d")!;
-    output.filter = `brightness(${edits.brightness}) contrast(${edits.contrast}) saturate(${edits.saturation})`;
     output.drawImage(
       rotated,
       left,
@@ -79,7 +79,7 @@ export function PhotoEditor({
       target.width,
       target.height,
     );
-  }, [image, edits, cropping]);
+  }, [image, edits.rotation, edits.flip, edits.crop, cropping]);
   function point(event: PointerEvent<HTMLDivElement>): [number, number] {
     const box = event.currentTarget.getBoundingClientRect();
     return [
@@ -88,6 +88,10 @@ export function PhotoEditor({
     ];
   }
   const selection = draft || edits.crop;
+  const quarter = edits.rotation % 180 !== 0;
+  const crop = cropping ? [0, 0, 1, 1] : edits.crop;
+  const width = (quarter ? image?.naturalHeight || 1 : image?.naturalWidth || 1) * (crop[2] - crop[0]);
+  const height = (quarter ? image?.naturalWidth || 1 : image?.naturalHeight || 1) * (crop[3] - crop[1]);
   function setCropEdge(index: number, percent: number) {
     const crop = [...edits.crop] as PhotoEdits["crop"];
     const value = percent / 100;
@@ -105,6 +109,7 @@ export function PhotoEditor({
         ) : !image ? (
           <Loader2 className="spin" />
         ) : (
+          <PhotoViewport width={width} height={height} cropping={cropping}>
           <div
             className={"photo-canvas-wrap " + (cropping ? "cropping" : "")}
             onPointerDown={(event) => {
@@ -148,7 +153,13 @@ export function PhotoEditor({
               setDraft(null);
             }}
           >
-            <canvas ref={canvas} aria-label="Photo edit preview" />
+            <canvas
+              ref={canvas}
+              aria-label="Photo edit preview"
+              style={{
+                filter: `brightness(${edits.brightness}) contrast(${edits.contrast}) saturate(${edits.saturation})`,
+              }}
+            />
             {cropping && (
               <div
                 className="crop-selection"
@@ -164,6 +175,7 @@ export function PhotoEditor({
               </div>
             )}
           </div>
+          </PhotoViewport>
         )}
       </div>
       <aside className="photo-tools">

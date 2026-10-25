@@ -43,6 +43,7 @@ class SaveInput(BaseModel):
     path: str = Field(max_length=4096)
     revision: str = Field(min_length=64, max_length=64)
     kind: Literal['text', 'photo', 'document', 'pdf']
+    mode: Literal['copy', 'original'] = 'copy'
     text: str | None = Field(default=None, max_length=TEXT_LIMIT)
     photo: PhotoEdits | None = None
     paragraphs: list[ParagraphEdit] | None = Field(default=None, max_length=3000)
@@ -138,8 +139,9 @@ def save_editor(body: SaveInput, request: Request):
                 result = source_data(fs, original, candidate, kind, token)
             if revision(original.stat(follow_symlinks=False), body.path) != token:
                 raise HTTPException(409, 'This file changed. Reopen the editor before saving')
-            destination = copy_destination(fs, original)
-            result['entry'] = install_file(fs, db, staged, destination)
+            destination = original if body.mode == 'original' else copy_destination(fs, original)
+            result['entry'] = install_file(fs, db, staged, destination, overwrite=body.mode == 'original')
+            result['mode'] = body.mode
             result['revision'] = revision(destination.stat(follow_symlinks=False), fs.relative(destination))
             return result
     except (zipfile.BadZipFile, etree.XMLSyntaxError, PdfReadError, ValueError, KeyError):

@@ -10,6 +10,7 @@ import {
 import {
   AlignLeft,
   Code2,
+  Copy,
   FileText,
   Image as ImageIcon,
   Loader2,
@@ -72,7 +73,7 @@ export default function EditorDialog({
 }: {
   entry: Entry;
   close: () => void;
-  saved: (copy: Entry) => void;
+  saved: (entry: Entry, mode: "copy" | "original") => void;
 }) {
   const [data, setData] = useState<EditorData | null>(null);
   const [text, setText] = useState("");
@@ -130,7 +131,7 @@ export default function EditorDialog({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
-  const save = useCallback(async () => {
+  const save = useCallback(async (mode: "copy" | "original" = "original") => {
     if (!data || !dirty || busy) return;
     setBusy(true);
     setError("");
@@ -161,10 +162,11 @@ export default function EditorDialog({
           path: entry.path,
           revision: data.revision,
           kind: data.kind,
+          mode,
           ...changes,
         },
       );
-      saved(result.entry);
+      saved(result.entry, mode);
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -186,7 +188,7 @@ export default function EditorDialog({
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        void save();
+        void save(event.shiftKey ? "copy" : "original");
       }
     };
     document.addEventListener("keydown", shortcut);
@@ -366,7 +368,7 @@ export default function EditorDialog({
               ) : data?.kind === "text" ? (
                 `${text.split("\n").length.toLocaleString()} lines · ${text.length.toLocaleString()} characters`
               ) : (
-                "Original stays unchanged"
+                "Ready to edit"
               )}
             </span>
             {data && dirty && (
@@ -391,12 +393,24 @@ export default function EditorDialog({
             </button>
             {data && (
               <button
+                className="button secondary"
+                disabled={busy || !dirty}
+                onClick={() => void save("copy")}
+                title="Save a separate copy · Ctrl/Cmd+Shift+S"
+              >
+                <Copy size={16} />
+                Save copy
+              </button>
+            )}
+            {data && (
+              <button
                 className="button primary"
                 disabled={busy || !dirty}
-                onClick={() => void save()}
+                onClick={() => void save("original")}
+                title="Save original with version history · Ctrl/Cmd+S"
               >
                 <Save size={16} />
-                Save copy
+                Save
               </button>
             )}
           </div>

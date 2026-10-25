@@ -155,10 +155,12 @@ export default function App() {
   const mainSearch = useRef<HTMLInputElement>(null);
   const ready = Boolean(account && (!account.auth_enabled || account.user));
   const fileView = ["files", "favorites", "tag"].includes(view);
+  const selectionView = fileView || view === "trash";
+  const selectionKey = (entry: Entry) => view === "trash" ? entry.id! : entry.path;
   const marquee = useMarqueeSelection({
     enabled:
       ready &&
-      fileView &&
+      selectionView &&
       !loading &&
       !error &&
       !modal &&
@@ -170,7 +172,7 @@ export default function App() {
     change: setSelection,
   });
   const selected = listing.items.filter((item) =>
-    selection.includes(item.path),
+    selection.includes(selectionKey(item)),
   );
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const notify = useCallback((text: string) => {
@@ -330,10 +332,10 @@ export default function App() {
       if (
         (event.metaKey || event.ctrlKey) &&
         event.key.toLowerCase() === "a" &&
-        fileView
+        selectionView
       ) {
         event.preventDefault();
-        setSelection(listing.items.map((item) => item.path));
+        setSelection(listing.items.map(selectionKey));
       }
       if (
         (event.metaKey || event.ctrlKey) &&
@@ -350,7 +352,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, tagManager, fileView, listing.items]);
+  }, [modal, tagManager, fileView, selectionView, view, listing.items]);
   function navigate(next: View, destination = "", tag = "") {
     window.scrollTo({ top: 0, behavior: "instant" });
     setView(next);
@@ -376,6 +378,10 @@ export default function App() {
       done(message);
     } catch (error) {
       notify((error as Error).message);
+      if ((modal?.action === "emptytrash" || modal?.action === "purge") && [404, 409].includes((error as { status?: number }).status || 0)) {
+        setModal(null);
+        refresh();
+      }
     } finally {
       setBusy(false);
     }
@@ -488,13 +494,6 @@ export default function App() {
           <span>
             RootDrive<span className="brand-dot">.</span>
           </span>
-        </button>
-        <button
-          className="button primary sidebar-upload"
-          onClick={() => chooseUpload()}
-        >
-          <Plus size={20} />
-          Upload files
         </button>
         <nav aria-label="Main navigation">
           {nav("files", "My files", <HardDrive size={19} />)}
@@ -683,6 +682,31 @@ export default function App() {
               </button>
             )}
           </div>
+          {view === "trash" && (
+            <div className="trash-toolbar">
+              <span className="muted">{selected.length ? `${selected.length} selected` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>
+              {selected.length > 0 && (
+                <button className="icon-button" aria-label="Clear selection" onClick={() => setSelection([])}><X size={16} /></button>
+              )}
+              <div className="layout-toggle trash-layout">
+                <button className={layout === "grid" ? "active" : ""} aria-label="Grid view" onClick={() => setLayout("grid")}><LayoutGrid size={17} /></button>
+                <button className={layout === "list" ? "active" : ""} aria-label="List view" onClick={() => setLayout("list")}><List size={18} /></button>
+              </div>
+              <button
+                className="button secondary danger-text"
+                disabled={busy || loading || !!error || !listing.total || !listing.revision}
+                onClick={() => selected.length ? chooseAction("purge", selected) : setModal({
+                  action: "emptytrash",
+                  entries: [],
+                  trashRevision: listing.revision,
+                  total: listing.total,
+                })}
+              >
+                <Trash2 size={16} />
+                {selected.length ? "Remove selected" : "Remove all"}
+              </button>
+            </div>
+          )}
           {view === "files" && (
             <div
               className="file-actions"
@@ -904,14 +928,14 @@ export default function App() {
                   {listing.items.map((entry, index) => (
                     <article
                       key={entry.id || entry.path}
-                      data-selection-path={entry.path}
+                      data-selection-path={selectionKey(entry)}
                       style={{
                         animationDelay: Math.min(index, 10) * 24 + "ms",
                       }}
                       className={
                         "file-card " +
                         (entry.type === "folder" ? "folder-card " : "") +
-                        (selection.includes(entry.path) ? "selected" : "")
+                        (selection.includes(selectionKey(entry)) ? "selected" : "")
                       }
                       onContextMenu={(event) => {
                         if (view === "trash") return;
@@ -941,23 +965,23 @@ export default function App() {
                             disabled={view === "trash"}
                           />
                         </button>
-                        {view !== "trash" && (
+                        {selectionView && (
                           <label
                             className={
                               "selection-check " +
-                              (selection.includes(entry.path) ? "checked" : "")
+                              (selection.includes(selectionKey(entry)) ? "checked" : "")
                             }
                           >
                             <input
                               type="checkbox"
-                              checked={selection.includes(entry.path)}
+                              checked={selection.includes(selectionKey(entry))}
                               aria-label={"Select " + entry.name}
                               onChange={(event) =>
                                 setSelection((current) =>
                                   event.target.checked
-                                    ? [...current, entry.path]
+                                    ? [...current, selectionKey(entry)]
                                     : current.filter(
-                                        (item) => item !== entry.path,
+                                        (item) => item !== selectionKey(entry),
                                       ),
                                 )
                               }
@@ -1030,9 +1054,7 @@ export default function App() {
                         </button>
                         <div className="card-meta">
                           <span>
-                            {entry.type === "folder"
-                              ? "Folder"
-                              : bytes(entry.size)}
+                            {bytes(entry.size)}
                           </span>
                           <time>{date(entry.modified)}</time>
                         </div>
@@ -1090,7 +1112,7 @@ export default function App() {
                         )}
                       </div>
                       <span className="list-size">
-                        {entry.type === "folder" ? "—" : bytes(entry.size)}
+                        {bytes(entry.size)}
                       </span>
                       <span className="list-date">{date(entry.modified)}</span>
                     </article>
@@ -1535,6 +1557,7 @@ export default function App() {
           close={() => setModal(null)}
           properties={() => setModal({ ...modal, action: "properties" })}
           edit={() => setModal({ ...modal, action: "edit" })}
+          share={account.shares_enabled ? () => setModal({ ...modal, action: "share" }) : undefined}
         />
       )}
       {modal?.action === "edit" && (
@@ -1550,7 +1573,7 @@ export default function App() {
           <EditorDialog
             entry={modal.entries[0]}
             close={() => setModal(null)}
-            saved={(copy) => done("Copy saved · " + copy.name)}
+            saved={(entry, mode) => done((mode === "copy" ? "Copy saved · " : "Saved · ") + entry.name)}
           />
         </Suspense>
       )}
@@ -1575,22 +1598,22 @@ export default function App() {
           }}
         />
       )}
-      {(modal?.action === "delete" || modal?.action === "purge") && (
+      {(modal?.action === "delete" || modal?.action === "purge" || modal?.action === "emptytrash") && (
         <Dialog
           title={
-            modal.action === "purge" ? "Delete permanently?" : "Move to trash?"
+            modal.action === "emptytrash" ? "Remove all from Trash?" : modal.action === "purge" ? "Delete permanently?" : "Move to trash?"
           }
           close={() => {
             if (!busy) setModal(null);
           }}
         >
           <p className="confirm-name">
-            {modal.entries.length === 1
+            {modal.action === "emptytrash" ? `${modal.total} items` : modal.entries.length === 1
               ? modal.entries[0].name
               : modal.entries.length + " selected items"}
           </p>
           <p className="muted">
-            {modal.action === "purge"
+            {modal.action !== "delete"
               ? "This also removes saved versions. This cannot be undone."
               : "You can restore these files from Trash."}
           </p>
@@ -1608,12 +1631,16 @@ export default function App() {
               onClick={() =>
                 perform(
                   () =>
-                    modal.action === "purge"
-                      ? api("/trash", "DELETE", { id: modal.entries[0].id })
+                    modal.action === "emptytrash"
+                      ? api("/trash/all", "DELETE", { revision: modal.trashRevision })
+                      : modal.action === "purge"
+                      ? modal.entries.length > 1
+                        ? api("/trash/batch", "DELETE", { ids: modal.entries.map((item) => item.id) })
+                        : api("/trash", "DELETE", { id: modal.entries[0].id })
                       : api("/files/batch/trash", "POST", {
                           paths: modal.entries.map((item) => item.path),
                         }),
-                  modal.action === "purge"
+                  modal.action !== "delete"
                     ? "Deleted permanently"
                     : "Moved to trash",
                 )
@@ -1624,7 +1651,7 @@ export default function App() {
               ) : (
                 <Trash2 size={16} />
               )}
-              {modal.action === "purge" ? "Delete forever" : "Move to trash"}
+              {modal.action === "emptytrash" ? "Remove all" : modal.action === "purge" ? "Delete forever" : "Move to trash"}
             </button>
           </div>
         </Dialog>

@@ -49,6 +49,7 @@ class FileEntry(BaseModel):
     path: str
     type: str
     size: int
+    child_count: int | None = None
     modified: float
     mime: str
     favorite: bool = False

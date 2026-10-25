@@ -4,12 +4,14 @@ import uuid
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
+from pydantic import BaseModel, Field
 from ..database import TrashItem
 from ..schemas import CreateFileInput, FileEntry, FileListing, FolderInput, MoveInput, PathInput, RenameInput, StorageStats, TrashInput
 from ..services.creation import create_file_contents
 from ..services.security import require_access
 from ..services.metadata import image_metadata
-from ..services.workspace import install_file, enrich, owner_key, relocate_metadata, trash_metadata, restore_metadata, purge_metadata
+from ..services.workspace import install_file, enrich, owner_key, relocate_metadata, trash_metadata, restore_metadata
+from ..services.trash import purge_items, trash_revision
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
 
@@ -161,7 +163,8 @@ def delete_file(body: PathInput, request: Request):
         source = fs.path(body.path, allow_root=False)
         identifier = uuid.uuid4().hex
         destination = fs.settings.internal_path / 'trash' / identifier
-        item = TrashItem(id=identifier, original_path=body.path, stored_path=identifier, item_type='folder' if source.is_dir() else 'file', size=0 if source.is_dir() else source.stat().st_size)
+        entry = fs.entry(source)
+        item = TrashItem(id=identifier, original_path=body.path, stored_path=identifier, item_type=entry['type'], size=entry['size'])
         os.rename(source, destination)
         try:
             db.add(item)
@@ -177,9 +180,9 @@ def delete_file(body: PathInput, request: Request):
 @router.get('/trash')
 def list_trash(request: Request, offset: int = Query(0, ge=0), limit: int = Query(80, ge=1, le=200)):
     from sqlalchemy import func
-    with request.app.state.db() as db:
+    with request.app.state.fs.lock, request.app.state.db() as db:
         items = db.scalars(select(TrashItem).order_by(TrashItem.deleted_at.desc()).offset(offset).limit(limit))
-        return {'items': [{'id': item.id, 'name': Path(item.original_path).name, 'path': item.original_path, 'type': item.item_type, 'size': item.size, 'modified': item.deleted_at} for item in items], 'total': db.scalar(select(func.count()).select_from(TrashItem))}
+        return {'items': [{'id': item.id, 'name': Path(item.original_path).name, 'path': item.original_path, 'type': item.item_type, 'size': item.size, 'modified': item.deleted_at} for item in items], 'total': db.scalar(select(func.count()).select_from(TrashItem)), 'revision': trash_revision(db)}
 
 
 @router.post('/trash/restore')
@@ -213,16 +216,36 @@ def remove_trash(body: TrashInput, request: Request):
         item = db.get(TrashItem, body.id)
         if not item:
             raise HTTPException(404, 'Trash item not found')
-        source = fs.settings.internal_path / 'trash' / item.stored_path
-        if source.is_dir():
-            shutil.rmtree(source)
-        else:
-            source.unlink(missing_ok=True)
-        purge_metadata(db, item.id, fs.settings)
-        db.delete(item)
-        db.commit()
-        fs.invalidate()
+        purge_items(fs, db, [item])
         return {'ok': True}
+
+
+class EmptyTrashInput(BaseModel):
+    revision: str = Field(pattern='^[a-f0-9]{64}$')
+
+
+class TrashBatchInput(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=200)
+
+
+@router.delete('/trash/batch')
+def remove_selected_trash(body: TrashBatchInput, request: Request):
+    fs = request.app.state.fs
+    with fs.lock, request.app.state.db() as db:
+        identifiers = set(body.ids)
+        items = db.scalars(select(TrashItem).where(TrashItem.id.in_(identifiers))).all()
+        if len(items) != len(identifiers):
+            raise HTTPException(409, 'Selected items changed. Select the remaining trash items again')
+        return purge_items(fs, db, items)
+
+
+@router.delete('/trash/all')
+def empty_trash(body: EmptyTrashInput, request: Request):
+    fs = request.app.state.fs
+    with fs.lock, request.app.state.db() as db:
+        if body.revision != trash_revision(db):
+            raise HTTPException(409, 'Trash changed. Refresh and confirm Remove all again')
+        return purge_items(fs, db, db.scalars(select(TrashItem)).yield_per(200))
 
 
 @router.get('/storage/stats', response_model=StorageStats)

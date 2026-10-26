@@ -99,6 +99,8 @@ def copy_application(source, destination):
     excluded = shutil.ignore_patterns('.git', '.venv', '.runtime', '__pycache__', 'node_modules', 'dist', '.DS_Store', '.env*', '.npmrc', '.pypirc', '*.pyc', '.pytest_cache', '*.tsbuildinfo')
     for name in ['backend', 'frontend']:
         shutil.copytree(source / name, destination / name, dirs_exist_ok=True, ignore=excluded)
+    if (source / 'docs').is_dir():
+        shutil.copytree(source / 'docs', destination / 'docs', dirs_exist_ok=True, ignore=excluded)
     for name in ['start.sh', 'stop.sh', 'run.py', 'requirements.txt', '.env.example', 'README.md']:
         shutil.copy2(source / name, destination / name)
 

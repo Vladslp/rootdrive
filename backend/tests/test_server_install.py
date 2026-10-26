@@ -51,6 +51,9 @@ def source_tree(path):
         (path / name / 'source.txt').write_text('application')
     for name in ['start.sh', 'stop.sh', 'run.py', 'requirements.txt', '.env.example', 'README.md']:
         (path / name).write_text('source')
+    (path / 'docs/screenshots').mkdir(parents=True)
+    (path / 'docs/GUIDE.md').write_text('documentation')
+    (path / 'docs/screenshots/files.png').write_bytes(b'screenshot')
     (path / '.env').write_text('PRIVATE_SOURCE_VALUE=secret')
     (path / 'storage').mkdir()
     (path / 'storage/private.txt').write_text('user file')
@@ -81,6 +84,8 @@ def isolated_installer(tmp_path, monkeypatch):
 def test_install_and_repeat_preserve_data_and_configuration(isolated_installer):
     source, application, state, calls = isolated_installer
     installer.install(application, state, False)
+    assert (application / 'docs/GUIDE.md').read_text() == 'documentation'
+    assert (application / 'docs/screenshots/files.png').read_bytes() == b'screenshot'
     configuration = application / '.env'
     assert 'HOST=127.0.0.1' in configuration.read_text()
     assert 'AUTH_ENABLED=false' in configuration.read_text()

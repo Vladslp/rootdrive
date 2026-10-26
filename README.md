@@ -45,9 +45,11 @@ cd ~/Documents/rootdrive
 ./start.sh
 ```
 
-The same script prepares and launches the application. It finds Python 3.11+, creates `.venv` if missing, installs missing/incompatible Python dependencies, creates `.env` only when absent, installs frontend dependencies when needed, and rebuilds the frontend when its source changes. The launcher shows four setup stages and a compact disk-and-roots terminal mark. ANSI colors are enabled only for interactive terminals; set `NO_COLOR=1` to disable them. Repeat launches reuse the prepared environment without network access. Existing `.env`, user files and databases are preserved. It works when invoked from another directory, including project paths containing spaces.
+In an interactive terminal, the launcher offers **1. Start RootDrive**, **2. Install as a Linux server**, or **0. Exit**. Enter selects the ordinary launch. `./start.sh --start` skips the menu, and noninteractive invocations without arguments retain the ordinary launch behavior.
 
-Python itself must already be installed. Node.js and npm are required to build the frontend; once the build is prepared, startup does not require Node.js. If a required system runtime is missing, the script prints an actionable message rather than modifying the operating system.
+The ordinary launch prepares and launches the application. It finds Python 3.11+, creates `.venv` if missing, installs missing/incompatible Python dependencies, creates `.env` only when absent, installs frontend dependencies when needed, and rebuilds the frontend when its source changes. The launcher shows four setup stages and a compact disk-and-roots terminal mark. ANSI colors are enabled only for interactive terminals; set `NO_COLOR=1` to disable them. Repeat launches reuse the prepared environment without network access. Existing `.env`, user files and databases are preserved. It works when invoked from another directory, including project paths containing spaces.
+
+Python itself must already be installed. Node.js and npm are required to build the frontend; once the build is prepared, startup does not require Node.js. If a required system runtime is missing during an ordinary launch, the script prints an actionable message. System package installation is handled separately by the server installer.
 
 To prepare the installation without starting the server:
 
@@ -56,6 +58,62 @@ To prepare the installation without starting the server:
 ```
 
 Stop a foreground launch with **Ctrl+C**, or run `./stop.sh` from another terminal. If RootDrive is already listening on the configured address, the launcher reports that instead of starting a second instance. A conflicting server on the configured port must be stopped or `PORT` changed.
+
+### Automatic Linux server installation
+
+From a trusted copy of this project, run:
+
+```bash
+./server-install.sh
+```
+
+Or choose option 2 in `./start.sh`. The direct equivalent is `./start.sh --server-install`. Administrator access is required; the script uses sudo when invoked by a regular user.
+
+Use a current 64-bit Linux installation: Debian 12+, Ubuntu 24.04+, Raspberry Pi OS 64-bit Bookworm or newer, or a current Fedora/Arch system. Automatic system dependency setup supports apt, dnf and pacman. Python 3.11+ with venv must be available from the distribution. No third-party Python repository is added. Native Windows and macOS use the ordinary launcher instead; WSL2 can use Linux installation, with `--no-service` if systemd is unavailable.
+
+The installer installs system prerequisites, creates the unprivileged `rootdrive` account, copies application code to `/opt/rootdrive`, creates a virtual environment, installs Python/npm dependencies and builds the frontend. It reuses a supported Node.js runtime or downloads the appropriate x86-64/ARM64 Node.js 24 archive from the [official distribution](https://nodejs.org/dist/latest-v24.x/), verifies its published SHA-256 checksum, and installs it inside `.runtime/node`. npm and Python setup run as the service account. Application code becomes root-owned and readable/executable by the service group after setup. The service runs Python directly; Node.js is needed only for builds.
+
+| Location | Purpose |
+| --- | --- |
+| `/opt/rootdrive` | Installed application, dependencies and frontend build |
+| `/opt/rootdrive/.env` | Installed server configuration |
+| `/var/lib/rootdrive/storage` | Stored user files |
+| `/var/lib/rootdrive/data` | SQLite database and internal trash/versions/cache |
+| `/etc/systemd/system/rootdrive.service` | Managed systemd service |
+
+Run from a source checkout outside the installation directory, such as `~/rootdrive`. Existing source workspace files, databases and `.env` are not copied or migrated. Existing installed configuration and data are preserved on repeat installation. Stop any ordinary RootDrive launch on the same port before installing the service; an occupied port is reported without terminating unrelated processes. Nonempty unmanaged application/data directories and existing unmanaged units are rejected. The installer stops its managed service during repeat setup; if setup fails, fix the reported issue and rerun it. Migration to different application/data paths must be handled explicitly.
+
+```bash
+./server-install.sh --install-dir /opt/rootdrive --data-dir /var/lib/rootdrive
+./server-install.sh --no-service
+```
+
+`--no-service` installs without systemd or automatic startup. Run the printed Python command as the `rootdrive` account. A normal installation enables startup at boot, verifies the application's health endpoint and exposes these controls:
+
+```bash
+sudo systemctl start rootdrive
+sudo systemctl stop rootdrive
+sudo systemctl restart rootdrive
+sudo journalctl -u rootdrive -f
+```
+
+The [systemd service](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html) uses `Restart=on-failure`, an unprivileged user, a private temporary directory and restrictive file creation permissions. Use systemctl for the installed service; `stop.sh` continues to manage ordinary project launches.
+
+Initial server settings bind to `127.0.0.1:8000`, with optional authentication and public sharing disabled. The installer does not modify the firewall, publish the server or replace existing installed settings. For a VPS, reach it initially with an SSH tunnel:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 user@YOUR_SERVER
+```
+
+Then open `http://127.0.0.1:8000`. For trusted LAN access, edit the installed `.env` with `sudo`, set `HOST=0.0.0.0`, and restart the service. For an internet-facing deployment, configure authentication and HTTPS before exposing the port. Create an administrator with:
+
+```bash
+sudo -u rootdrive /opt/rootdrive/.venv/bin/python /opt/rootdrive/run.py create-admin
+```
+
+Set `AUTH_ENABLED=true` in the installed `.env` and restart the service to require login. Back up the installed `.env` and `/var/lib/rootdrive` before maintenance.
+
+Installer tests use temporary directories, fake package-manager/service commands and a pseudo-terminal; they do not install packages, create real users, change system units or touch user files. Actual privileged installation on Linux hardware is a separate deployment check.
 
 ### Manual installation
 
@@ -133,7 +191,7 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 ```
 
-Save it as `/etc/systemd/system/rootdrive.service` and run `sudo systemctl enable --now rootdrive`. Create the service user and give it access to the project and storage first. This is an example, not an automatically installed service.
+Save it as `/etc/systemd/system/rootdrive.service` and run `sudo systemctl enable --now rootdrive`. Create the service user and give it access to the project and storage first. This is a manual alternative. `server-install.sh` creates and manages a unit automatically.
 
 ## Configuration
 

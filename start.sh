@@ -7,13 +7,15 @@ umask 077
 
 MODE=start
 case "${1:-}" in
-    "") ;;
+    "") if [ -t 0 ] && [ -t 1 ]; then MODE=menu; fi ;;
+    --start) MODE=start ;;
     --install-only) MODE=install ;;
+    --server-install) shift; exec sh "$PROJECT_DIR/server-install.sh" "$@" ;;
     --help|-h)
-        printf '%s\n' 'Usage: ./start.sh [--install-only]' 'Installs missing project dependencies, builds the frontend when needed, and starts RootDrive.' 'Requires Python 3.11+. Node.js and npm are needed only to build the frontend.' 'Stop the server with Ctrl+C or ./stop.sh.'
+        printf '%s\n' 'Usage: ./start.sh [--start | --install-only | --server-install [options]]' 'Installs missing project dependencies, builds the frontend when needed, and starts RootDrive.' 'Requires Python 3.11+. Node.js and npm are needed only to build the frontend.' 'Interactive mode offers local launch or Linux server installation.' 'Use --start to skip the menu; --server-install forwards installer options.' 'Stop the server with Ctrl+C or ./stop.sh.'
         exit 0
         ;;
-    *) printf '%s\n' "Unknown option: $1" 'Usage: ./start.sh [--install-only]' >&2; exit 2 ;;
+    *) printf '%s\n' "Unknown option: $1" 'Usage: ./start.sh [--start | --install-only | --server-install [options]]' >&2; exit 2 ;;
 esac
 if [ "$#" -gt 1 ]; then
     printf '%s\n' 'Too many arguments.' >&2
@@ -58,6 +60,19 @@ printf '  %s%s  │ · │ │ · │%s   %s%sRootDrive%s\n' "$RD_BLUE" "$RD_BOL
 printf '  %s%s  └─┬─┘ └─┬─┘%s   %sSetup & launch%s\n' "$RD_BLUE" "$RD_BOLD" "$RD_RESET" "$RD_MUTED" "$RD_RESET"
 printf '  %s%s    ╰──┬──╯%s\n' "$RD_BLUE" "$RD_BOLD" "$RD_RESET"
 printf '  %s%s       ╵%s\n' "$RD_BLUE" "$RD_BOLD" "$RD_RESET"
+if [ "$MODE" = menu ]; then
+    printf '\n  %s1%s  Start RootDrive\n  %s2%s  Install as a Linux server\n  %s0%s  Exit\n\n' "$RD_BLUE" "$RD_RESET" "$RD_BLUE" "$RD_RESET" "$RD_MUTED" "$RD_RESET"
+    while :; do
+        printf '  Choose [1]: '
+        if ! IFS= read -r ROOTDRIVE_CHOICE; then printf '\n'; exit 0; fi
+        case "$ROOTDRIVE_CHOICE" in
+            ''|1) MODE=start; break ;;
+            2) exec sh "$PROJECT_DIR/server-install.sh" ;;
+            0) exit 0 ;;
+            *) printf '  Choose 1, 2 or 0.\n' ;;
+        esac
+    done
+fi
 stage '[1/4]' 'Python environment'
 
 VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"

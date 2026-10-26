@@ -1,0 +1,76 @@
+![RootDrive — self-hosted file storage](docs/banner.png)
+
+Keep your files on your own computer. Open them from any browser.
+
+No cloud account. No subscription. No Docker.
+
+**[Start](#start-here) · [Full guide](docs/GUIDE.md)**
+
+## Your files
+
+Upload, search, move and download. Keep folders, favorites and tags in one place.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/files-dark.png">
+  <img alt="RootDrive file manager with folders, favorites and colored tags" src="docs/screenshots/files-light.png" width="1440">
+</picture>
+
+## Start here
+
+You need **Python 3.11+**. For local setup, also install **Node.js 22.13+ and npm**. Works on Linux and macOS; use WSL2 on Windows.
+
+From the project folder:
+
+```sh
+./start.sh
+```
+
+Choose **Start RootDrive**, then open [localhost:8000](http://127.0.0.1:8000).
+The launcher prepares the app on its first run. Stop it with `./stop.sh` or **Ctrl+C**.
+
+For a Linux server, choose **Install as a Linux server** in the same menu.
+
+## Open. Edit. Save.
+
+Edit text and code with line numbers and syntax colors. Save the original or a copy.
+
+![The built-in Python code editor](docs/screenshots/code-editor.png)
+
+Crop, rotate and adjust images. Basic document editing and PDF tools are included too.
+
+![Image editing inside RootDrive](docs/screenshots/image-editor.png)
+
+## Create something new
+
+Start a note, a document or a code file without leaving the panel.
+
+<p align="center">
+  <img src="docs/screenshots/new-file.png" alt="New file dialog with text, document and programming language options" width="620">
+</p>
+
+## See your space
+
+Files, trash, versions, system usage and free space — all together.
+
+![Storage dashboard](docs/screenshots/storage.png)
+
+## Light, dark, and mobile
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/mobile-files.png" alt="File manager on a phone in dark mode" width="320"></td>
+    <td align="center"><img src="docs/screenshots/mobile-settings.png" alt="Settings on a phone in light mode" width="320"></td>
+  </tr>
+</table>
+
+## A little more
+
+- Files stay in `storage/` during a local installation.
+- Login and public links are optional and off by default. Users share one workspace.
+- Public links let anyone with the link download the file.
+- For LAN access, set `HOST=0.0.0.0` in `.env` and restart.
+
+Built as a university Python project: **FastAPI** for the API, **Python filesystem services** for files, and **SQLAlchemy + SQLite** for metadata. The interface uses React and TypeScript.
+
+[Setup, security, tests and limitations →](docs/GUIDE.md)
+

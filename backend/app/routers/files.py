@@ -118,7 +118,7 @@ def preview_file(request: Request, path: str):
 
 @router.get('/files/thumbnail')
 def thumbnail_file(request: Request, path: str):
-    return request.app.state.previews.response(path, thumbnail=True)
+    return request.app.state.previews.response(path, thumbnail=True, if_none_match=request.headers.get('if-none-match'))
 
 
 def relocate(fs, db, source, destination):

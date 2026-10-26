@@ -341,7 +341,7 @@ export function MoveDialog({
             Previous
           </button>
           <span>
-            {offset + 1}–{Math.min(offset + 80, listing.total)}
+            {offset + 1}to{Math.min(offset + 80, listing.total)}
           </span>
           <button
             disabled={offset + 80 >= listing.total}
@@ -764,7 +764,6 @@ export function PreviewDialog({
           <video
             src={url}
             controls
-            autoPlay
             playsInline
             onError={() => setFailed(true)}
           />

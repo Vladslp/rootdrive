@@ -15,11 +15,18 @@ Object.assign(globalThis, {
   document: dom.window.document,
   HTMLElement: dom.window.HTMLElement,
   Element: dom.window.Element,
+  MutationObserver: dom.window.MutationObserver,
+  Window: dom.window.Window,
+  getComputedStyle: dom.window.getComputedStyle,
   IS_REACT_ACT_ENVIRONMENT: true,
   requestAnimationFrame: (callback) => { callback(0); return 1; },
   cancelAnimationFrame: () => {},
   ResizeObserver: class { observe() {} disconnect() {} },
 });
+dom.window.requestAnimationFrame = (callback) => setTimeout(() => callback(0), 16);
+dom.window.cancelAnimationFrame = clearTimeout;
+dom.window.Range.prototype.getClientRects = () => [];
+dom.window.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 });
 Object.defineProperty(dom.window.HTMLElement.prototype, "clientWidth", { get: () => 600 });
 Object.defineProperty(dom.window.HTMLElement.prototype, "clientHeight", { get: () => 400 });
 let drawCount = 0;
@@ -35,7 +42,7 @@ globalThis.Image = class {
 const require = createRequire(import.meta.url);
 const components = fileURLToPath(new URL("../src/components/", import.meta.url));
 const bundle = await build({
-  stdin: { contents: 'export { PhotoEditor } from "./PhotoEditor"; export { PhotoViewport } from "./PhotoViewport"; export { NewFileDialog, ShareDialog } from "./FileDialogs"; export { TagDeleteDialog } from "./TagDeleteDialog"; export { default as EditorDialog } from "./EditorDialog";', resolveDir: components, loader: "tsx" },
+  stdin: { contents: 'export { PhotoEditor } from "./PhotoEditor"; export { PhotoViewport } from "./PhotoViewport"; export { NewFileDialog, ShareDialog } from "./FileDialogs"; export { TagDeleteDialog } from "./TagDeleteDialog"; export { default as EditorDialog } from "./EditorDialog"; export { default as CodeEditor } from "./CodeEditor"; export { EditorView } from "@codemirror/view"; export { undo, redo } from "@codemirror/commands";', resolveDir: components, loader: "tsx" },
   bundle: true,
   format: "esm",
   platform: "node",
@@ -56,7 +63,7 @@ try {
 } finally {
   await rm(compiledDirectory, { recursive: true, force: true });
 }
-const { PhotoEditor, PhotoViewport, NewFileDialog, ShareDialog, TagDeleteDialog, EditorDialog } = compiled;
+const { PhotoEditor, PhotoViewport, NewFileDialog, ShareDialog, TagDeleteDialog, EditorDialog, CodeEditor, EditorView, undo, redo } = compiled;
 const { createRoot } = await import("react-dom/client");
 let root, host, requests, saved;
 const defaults = { rotation: 0, flip: false, crop: [0, 0, 1, 1], brightness: 1, contrast: 1, saturation: 1 };
@@ -161,13 +168,11 @@ test("file types use labelled native radio tiles", async () => {
 for (const [label, mode] of [["Save", "original"], ["Save copy", "copy"]]) {
   test(`${label} sends its explicit save mode`, async () => {
     await render(h(EditorDialog, { entry, close() {}, saved: (...value) => saved.push(value) }));
-    const textarea = host.querySelector("textarea");
-    act(() => {
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set.call(textarea, "changed");
-      textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
-    });
+    const editor = EditorView.findFromDOM(host.querySelector(".cm-editor"));
+    act(() => editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: "changed" } }));
     await act(async () => click(label));
     assert.equal(requests.at(-1).body.mode, mode);
+    assert.equal(requests.at(-1).body.text, "changed");
     assert.equal(saved[0][1], mode);
   });
 }
@@ -202,4 +207,51 @@ test("a failed tag deletion keeps the dialog open with an error", async () => {
   assert.equal(removed, false);
   assert.equal(host.querySelector('[role="alert"]').textContent, "Storage unavailable");
   assert.equal([...host.querySelectorAll("button")].find((node) => node.textContent === "Delete tag").disabled, false);
+});
+
+test("code editing shows a gutter and tracks clean state through undo and redo", async () => {
+  const dirty = [];
+  await render(h(CodeEditor, { text: "first\nsecond", format: "txt", wrap: true, disabled: false, changed: (value) => dirty.push(value) }));
+  const editor = EditorView.findFromDOM(host.querySelector(".cm-editor"));
+  assert.ok(host.querySelector(".cm-lineNumbers"));
+  act(() => editor.dispatch({ changes: { from: 5, insert: "!" } }));
+  assert.deepEqual(dirty, [true]);
+  act(() => undo(editor));
+  assert.deepEqual(dirty, [true, false]);
+  assert.equal(editor.state.doc.toString(), "first\nsecond");
+  act(() => redo(editor));
+  assert.deepEqual(dirty, [true, false, true]);
+  assert.ok(host.textContent.includes("Ln 1, Col"));
+});
+test("large code documents render a viewport and keep changes in the editor", async () => {
+  const dirty = [];
+  const text = "value = 123456789\n".repeat(110000);
+  await render(h(CodeEditor, { text, format: "txt", wrap: false, disabled: false, changed: (value) => dirty.push(value) }));
+  const editor = EditorView.findFromDOM(host.querySelector(".cm-editor"));
+  assert.equal(editor.state.doc.lines, 110001);
+  assert.ok(host.querySelectorAll(".cm-line").length < 100);
+  for (let index = 0; index < 20; index++) act(() => editor.dispatch({ changes: { from: 0, insert: "x" } }));
+  assert.deepEqual(dirty, [true]);
+  assert.equal(editor.state.doc.length, text.length + 20);
+});
+test("code editor supports search and becomes read-only during saving", async () => {
+  const props = { text: "alpha\nbeta", format: "txt", wrap: true, disabled: false, changed() {} };
+  await render(h(CodeEditor, props));
+  click("Find in file");
+  assert.ok(host.querySelector(".cm-search"));
+  await render(h(CodeEditor, { ...props, disabled: true }));
+  assert.equal(host.querySelector(".cm-content").getAttribute("contenteditable"), "false");
+});
+
+test("Escape in the code field stays in the editor and the save shortcut saves current contents", async () => {
+  let closed = 0;
+  await render(h(EditorDialog, { entry, close: () => { closed++; }, saved: (...value) => saved.push(value) }));
+  const editor = EditorView.findFromDOM(host.querySelector(".cm-editor"));
+  act(() => editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: "keyboard save" } }));
+  act(() => editor.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", keyCode: 27, bubbles: true, cancelable: true })));
+  assert.equal(closed, 0);
+  await act(async () => editor.contentDOM.dispatchEvent(new window.KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true })));
+  assert.equal(requests.at(-1).body.text, "keyboard save");
+  assert.equal(requests.at(-1).body.mode, "original");
+  assert.equal(saved.length, 1);
 });

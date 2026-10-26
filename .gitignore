@@ -17,3 +17,5 @@ work/
 *.tsbuildinfo
 
 frontend/public/assets/pdfjs/
+
+.hallmark/

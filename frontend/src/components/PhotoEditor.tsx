@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import {
   Crop,
   FlipHorizontal2,
@@ -48,8 +48,8 @@ export function PhotoEditor({
       source.onerror = null;
     };
   }, [path, revision]);
-  useEffect(() => {
-    if (!image || !canvas.current) return;
+  const rotated = useMemo(() => {
+    if (!image) return null;
     const rotated = document.createElement("canvas");
     const quarter = edits.rotation % 180 !== 0;
     rotated.width = quarter ? image.naturalHeight : image.naturalWidth;
@@ -59,6 +59,10 @@ export function PhotoEditor({
     context.scale(edits.flip ? -1 : 1, 1);
     context.rotate((edits.rotation * Math.PI) / 180);
     context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
+    return rotated;
+  }, [image, edits.rotation, edits.flip]);
+  useEffect(() => {
+    if (!rotated || !canvas.current) return;
     const crop = cropping ? [0, 0, 1, 1] : edits.crop;
     const left = crop[0] * rotated.width,
       top = crop[1] * rotated.height;
@@ -79,7 +83,7 @@ export function PhotoEditor({
       target.width,
       target.height,
     );
-  }, [image, edits.rotation, edits.flip, edits.crop, cropping]);
+  }, [rotated, edits.crop, cropping]);
   function point(event: PointerEvent<HTMLDivElement>): [number, number] {
     const box = event.currentTarget.getBoundingClientRect();
     return [

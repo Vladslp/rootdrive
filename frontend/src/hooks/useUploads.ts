@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { api, APIError, sendChunk, type UploadJob } from "../services/api";
 
 export type UploadSource = { file: File; relative: string };
@@ -30,25 +30,51 @@ export type Transfer = {
 };
 
 export function useUploads(ready: boolean, completed: () => void) {
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const listeners = useRef(new Set<() => void>());
+  const snapshot = useRef<Transfer[]>([]);
+  const runRef = useRef<() => Promise<void>>(async () => {});
+  const setTransfers = useCallback((items: Transfer[]) => {
+    snapshot.current = items;
+    listeners.current.forEach((listener) => listener());
+    queueMicrotask(() => { void runRef.current(); });
+  }, []);
+  const subscribe = useCallback((listener: () => void) => {
+    listeners.current.add(listener);
+    return () => { listeners.current.delete(listener); };
+  }, []);
+  const getSnapshot = useCallback(() => snapshot.current, []);
   const ref = useRef<Transfer[]>([]);
   const running = useRef(false);
   const activeKey = useRef<string | null>(null);
   const mounted = useRef(true);
   const abort = useRef<AbortController | null>(null);
+  const publication = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedRef = useRef(completed);
   completedRef.current = completed;
   const update = useCallback((key: string, values: Partial<Transfer>) => {
     ref.current = ref.current.map((item) =>
       item.key === key ? { ...item, ...values } : item,
     );
-    if (mounted.current) setTransfers(ref.current);
+    if (!mounted.current) return;
+    if (Object.keys(values).length === 1 && values.progress !== undefined) {
+      if (publication.current === null) publication.current = setTimeout(() => {
+        publication.current = null;
+        if (mounted.current) setTransfers(ref.current);
+      }, 100);
+    } else {
+      if (publication.current !== null) clearTimeout(publication.current);
+      publication.current = null;
+      setTransfers(ref.current);
+    }
   }, []);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       abort.current?.abort();
+      if (publication.current !== null) clearTimeout(publication.current);
+      if (completionTimer.current !== null) clearTimeout(completionTimer.current);
     };
   }, []);
   useEffect(() => {
@@ -80,6 +106,13 @@ export function useUploads(ready: boolean, completed: () => void) {
       active = false;
     };
   }, [ready]);
+  const reportCompleted = useCallback(() => {
+    if (completionTimer.current !== null) clearTimeout(completionTimer.current);
+    completionTimer.current = setTimeout(() => {
+      completionTimer.current = null;
+      if (mounted.current) completedRef.current();
+    }, 200);
+  }, []);
   const run = useCallback(async () => {
     if (running.current || !ready) return;
     running.current = true;
@@ -112,7 +145,7 @@ export function useUploads(ready: boolean, completed: () => void) {
           update(next.key, { job, received: job.received });
           if (job.status === "completed") {
             update(next.key, { state: "done", progress: 100 });
-            completedRef.current();
+            reportCompleted();
             activeKey.current = null;
             continue;
           }
@@ -175,7 +208,7 @@ export function useUploads(ready: boolean, completed: () => void) {
             received: file.size,
             file: undefined,
           });
-          completedRef.current();
+          reportCompleted();
         } catch (error) {
           const current = ref.current.find((item) => item.key === next.key);
           if (!current) {
@@ -204,12 +237,14 @@ export function useUploads(ready: boolean, completed: () => void) {
       running.current = false;
       abort.current = null;
     }
-  }, [ready, update]);
+  }, [ready, update, reportCompleted]);
+  runRef.current = run;
   useEffect(() => {
     void run();
-  }, [transfers, run]);
+  }, [run]);
   useEffect(() => {
     const retry = () => {
+      if (!ref.current.some((item) => item.state === "waiting" && item.file && (item.retries || 0) <= 3)) return;
       ref.current = ref.current.map((item) =>
         item.state === "waiting" && item.file && (item.retries || 0) <= 3
           ? { ...item, state: "queued" }
@@ -301,7 +336,8 @@ export function useUploads(ready: boolean, completed: () => void) {
     setTransfers(ref.current);
   };
   return {
-    transfers,
+    subscribe,
+    getSnapshot,
     add,
     pause,
     resume,

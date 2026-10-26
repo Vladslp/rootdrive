@@ -1,11 +1,77 @@
 @import "tailwindcss";
 :root {
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  --palette-0: #7597f4;
+  --palette-1: #edf2ff;
+  --palette-2: #526fc2;
+  --palette-3: #67ba98;
+  --palette-4: #ebf7f0;
+  --palette-5: #408367;
+  --palette-6: #dfb864;
+  --palette-7: #fbf5e8;
+  --palette-8: #a07c36;
+  --palette-9: #d98da2;
+  --palette-10: #faedf1;
+  --palette-11: #a6657c;
+  --palette-12: #a995e0;
+  --palette-13: #f3eefd;
+  --palette-14: #8872ba;
+  --palette-15: #94a1b8;
+  --palette-16: #f0f3f8;
+  --palette-17: #79879b;
+  --palette-18: #7697f4;
+  --palette-19: #df9ba9;
+  --palette-20: #ad9bdf;
+  --palette-21: #d9b76e;
+  --palette-22: #65718a;
+  --palette-23: #e3e8f1;
+  --palette-24: #2f394a;
+  --palette-25: #8caedc;
+  --palette-26: #7186a2;
+  --palette-27: #3b4b61;
+}
+:root {
+  --tone-0: #fff;
+  --tone-1: #5579ed;
+  --tone-2: #5579ed1a;
+  --tone-3: #476bdf;
+  --tone-4: #74ba9c;
+  --tone-5: #101e3c08;
+  --tone-6: #35518908;
+  --tone-7: #d5ab59;
+  --tone-8: #101d3326;
+  --tone-9: #0c142440;
+  --tone-10: #69aa8c;
+  --tone-11: #69aa8c15;
+  --tone-12: #f6f8fc;
+  --tone-13: #e8edf7;
+  --tone-14: #e3e8f2;
+  --tone-15: #101319;
+  --tone-16: #232c3d;
+  --tone-17: #1d2533;
+  --tone-18: #2e3a4e;
+  --tone-19: #3456a52b;
+  --tone-20: #d7a858;
+  --tone-21: #7bb89b;
+  --tone-22: #0002;
+  --tone-23: #0007;
+  --tone-24: #ffffff80;
+  --tone-25: #00000007;
+  --tone-26: #ffffff30;
+  --tone-27: #101d3320;
+  --tone-28: #1422380a;
+  --tone-29: #1220390d;
+  --tone-30: #0a152d40;
+  --tone-31: #f0f3f7;
+  --tone-32: #e0e8f2;
+  --tone-33: #fcfdff;
+  --tone-34: #c9d5e5;
+  --tone-35: #202936;
+  --tone-36: #3a4e6c;
+  --tone-37: #293545;
+  --tone-38: #607695;
+}
+:root {
+  font-family: var(--font-body);
   color-scheme: light;
   --bg: #f7f8fb;
   --panel: #fff;
@@ -69,8 +135,12 @@ button {
   color: inherit;
 }
 button:disabled {
-  cursor: default;
+  cursor: not-allowed;
   opacity: 0.45;
+  color:
+    var(--control-disabled-ink);
+  background-color:
+    var(--control-disabled);
 }
 button,
 a,
@@ -89,6 +159,10 @@ input:focus-visible,
 select:focus-visible {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px var(--blue-soft);
+  outline:
+    2px solid var(--blue);
+  outline-offset:
+    2px;
 }
 h1,
 h2,
@@ -122,7 +196,7 @@ select {
   border-radius: 10px;
   background: var(--input);
   color: var(--text);
-  padding: 10px 12px;
+  padding: 12px 12px;
 }
 input::placeholder {
   color: var(--muted);
@@ -149,7 +223,7 @@ button svg {
 .error-text {
   color: var(--danger);
   font-size: 13px;
-  margin-top: 14px;
+  margin-top: 16px;
   line-height: 1.6;
 }
 .danger-text {
@@ -170,22 +244,22 @@ button svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 8px;
   min-height: 43px;
   border-radius: 11px;
   font-size: 13px;
   font-weight: 550;
   white-space: nowrap;
-  padding: 11px 17px;
+  padding: 12px 16px;
   border: 1px solid transparent;
 }
 .primary {
-  color: #fff;
-  background: #5579ed;
-  box-shadow: 0 3px 9px #5579ed1a;
+  color: var(--tone-0);
+  background: var(--tone-1);
+  box-shadow: 0 3px 9px var(--tone-2);
 }
 .primary:hover:not(:disabled) {
-  background: #476bdf;
+  background: var(--tone-3);
   transform: translateY(-1px);
 }
 .secondary {
@@ -223,9 +297,9 @@ button svg {
   font-size: 12px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--blue-text);
-  padding: 5px 0;
+  padding: 4px 0;
 }
 .text-button:hover {
   color: var(--blue);
@@ -241,14 +315,14 @@ button svg {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 30px 20px 18px;
+  padding: 32px 20px 20px;
   z-index: 40;
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 3px 28px;
+  gap: 12px;
+  padding: 0 4px 28px;
   text-align: left;
   font-size: 24px;
   font-weight: 700;
@@ -272,17 +346,17 @@ button svg {
 .sidebar nav {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 12px;
   width: 100%;
   min-height: 44px;
   border-radius: 10px;
   text-align: left;
-  padding: 10px 16px;
+  padding: 12px 16px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 500;
@@ -309,7 +383,7 @@ button svg {
   margin-left: auto;
 }
 .sidebar-tags {
-  margin-top: 27px;
+  margin-top: 28px;
   min-height: 0;
   overflow: auto;
 }
@@ -317,10 +391,10 @@ button svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px 5px 16px;
+  padding: 0 12px 4px 16px;
   font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.6px;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--muted);
   font-weight: 650;
 }
@@ -342,34 +416,34 @@ button svg {
   flex-shrink: 0;
 }
 .blue {
-  --tag-color: #7597f4;
-  --tag-soft: #edf2ff;
-  --tag-text: #526fc2;
+  --tag-color: var(--palette-0);
+  --tag-soft: var(--palette-1);
+  --tag-text: var(--palette-2);
 }
 .green {
-  --tag-color: #67ba98;
-  --tag-soft: #ebf7f0;
-  --tag-text: #408367;
+  --tag-color: var(--palette-3);
+  --tag-soft: var(--palette-4);
+  --tag-text: var(--palette-5);
 }
 .amber {
-  --tag-color: #dfb864;
-  --tag-soft: #fbf5e8;
-  --tag-text: #a07c36;
+  --tag-color: var(--palette-6);
+  --tag-soft: var(--palette-7);
+  --tag-text: var(--palette-8);
 }
 .rose {
-  --tag-color: #d98da2;
-  --tag-soft: #faedf1;
-  --tag-text: #a6657c;
+  --tag-color: var(--palette-9);
+  --tag-soft: var(--palette-10);
+  --tag-text: var(--palette-11);
 }
 .violet {
-  --tag-color: #a995e0;
-  --tag-soft: #f3eefd;
-  --tag-text: #8872ba;
+  --tag-color: var(--palette-12);
+  --tag-soft: var(--palette-13);
+  --tag-text: var(--palette-14);
 }
 .slate {
-  --tag-color: #94a1b8;
-  --tag-soft: #f0f3f8;
-  --tag-text: #79879b;
+  --tag-color: var(--palette-15);
+  --tag-soft: var(--palette-16);
+  --tag-text: var(--palette-17);
 }
 [data-theme="dark"] .tag-pill {
   background: color-mix(in srgb, var(--tag-color) 15%, transparent);
@@ -378,20 +452,20 @@ button svg {
 .add-first-tag {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   font-size: 12px;
   color: var(--muted);
   padding: 12px 16px;
 }
 .sidebar-bottom {
   margin-top: auto;
-  padding-top: 22px;
+  padding-top: 24px;
 }
 .sidebar-storage {
   display: block;
   text-align: left;
   width: 100%;
-  padding: 8px 16px 22px;
+  padding: 8px 16px 24px;
   color: var(--muted);
   font-size: 10px;
 }
@@ -411,7 +485,7 @@ button svg {
 }
 .sidebar-storage > span {
   display: block;
-  margin-top: 9px;
+  margin-top: 8px;
 }
 .sidebar-storage strong {
   color: var(--text);
@@ -421,7 +495,7 @@ button svg {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #74ba9c;
+  background: var(--tone-4);
 }
 .main {
   margin-left: 236px;
@@ -433,7 +507,7 @@ button svg {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 0 42px;
+  padding: 0 44px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   position: sticky;
@@ -467,7 +541,7 @@ button svg {
 .connection-state {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
@@ -487,7 +561,7 @@ button svg {
 .page-content {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 38px 42px 80px;
+  padding: 40px 44px 80px;
 }
 .page-content-settings {
   max-width: 904px;
@@ -501,33 +575,33 @@ button svg {
   justify-content: space-between;
   align-items: center;
   gap: 20px;
-  margin-bottom: 29px;
+  margin-bottom: 28px;
 }
 .eyebrow {
   display: block;
   font-size: 9px;
   font-weight: 650;
-  letter-spacing: 2px;
+  letter-spacing: 0;
   color: var(--muted);
-  margin-bottom: 9px;
+  margin-bottom: 8px;
 }
 .file-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 20px;
 }
 .file-toolbar {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 19px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
 }
 .breadcrumbs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex: 1;
   min-width: 80px;
   max-width: 100%;
@@ -551,7 +625,7 @@ button svg {
 .breadcrumbs > span {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 .breadcrumbs > span:last-child {
@@ -563,8 +637,8 @@ button svg {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 0 11px;
-  gap: 9px;
+  padding: 0 12px;
+  gap: 8px;
   width: 238px;
   min-width: 130px;
   color: var(--muted);
@@ -596,7 +670,7 @@ button svg {
   border: 0;
   background: transparent;
   min-height: 35px;
-  padding: 6px 3px;
+  padding: 8px 4px;
   width: 86px;
   font-size: 11px;
   color: var(--muted);
@@ -612,8 +686,8 @@ button svg {
   gap: 2px;
   background: var(--border);
   border-radius: 8px;
-  padding: 3px;
-  margin-left: 10px;
+  padding: 4px;
+  margin-left: 12px;
 }
 .layout-toggle button {
   width: 30px;
@@ -627,13 +701,13 @@ button svg {
 .layout-toggle button.active {
   color: var(--blue-text);
   background: var(--panel);
-  box-shadow: 0 1px 3px #101e3c08;
+  box-shadow: 0 1px 3px var(--tone-5);
 }
 .listing-caption {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 9px 0 16px;
+  margin: 8px 0 16px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -646,7 +720,7 @@ button svg {
   font-size: 10px;
   border-radius: 5px;
   background: var(--border);
-  padding: 3px 6px;
+  padding: 4px 8px;
 }
 .listing-caption .text-button {
   font-size: 10px;
@@ -658,7 +732,7 @@ button svg {
   gap: 8px;
   font-size: 11px;
   color: var(--muted);
-  margin: -6px 0 15px;
+  margin: -4px 0 16px;
 }
 .file-collection.grid {
   display: grid;
@@ -679,7 +753,7 @@ button svg {
 }
 .grid .file-card:hover {
   border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
-  box-shadow: 0 7px 24px #35518908;
+  box-shadow: 0 7px 24px var(--tone-6);
   transform: translateY(-2px);
 }
 .file-card.selected {
@@ -739,7 +813,7 @@ button svg {
   transform: scale(1.025);
 }
 .card-info {
-  padding: 16px 17px 15px;
+  padding: 16px 16px 16px;
   min-width: 0;
 }
 .file-name {
@@ -764,7 +838,7 @@ button svg {
   gap: 8px;
   color: var(--muted);
   font-size: 10px;
-  margin-top: 11px;
+  margin-top: 12px;
 }
 .selection-check {
   position: absolute;
@@ -798,7 +872,7 @@ button svg {
 .selection-check.checked {
   border-color: var(--blue);
   background: var(--blue);
-  color: #fff;
+  color: var(--tone-0);
   opacity: 1;
 }
 .selection-check.checked svg {
@@ -826,10 +900,10 @@ button svg {
   opacity: 0;
 }
 .favorite-toggle:hover {
-  color: #d5ab59;
+  color: var(--tone-7);
 }
 .favorite-toggle.is-favorite {
-  color: #d5ab59;
+  color: var(--tone-7);
   opacity: 1;
 }
 .file-card:hover .favorite-toggle,
@@ -841,12 +915,12 @@ button svg {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  margin-top: 11px;
+  margin-top: 12px;
 }
 .tag-pill {
   background: var(--tag-soft);
   color: var(--tag-text);
-  padding: 3px 7px;
+  padding: 4px 8px;
   border-radius: 5px;
   font-size: 9px;
   max-width: 110px;
@@ -864,7 +938,7 @@ button svg {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 7px;
+  margin-top: 8px;
   white-space: nowrap;
 }
 .list-size,
@@ -885,7 +959,7 @@ button svg {
   grid-template-columns: 90px minmax(0, 1fr) 82px 124px;
   align-items: center;
   min-height: 75px;
-  padding-right: 45px;
+  padding-right: 44px;
   overflow: visible;
 }
 .list .file-card:hover {
@@ -898,7 +972,7 @@ button svg {
 .list .card-art {
   width: 42px;
   height: 42px;
-  margin-left: 34px;
+  margin-left: 36px;
   background: none;
   position: static;
 }
@@ -943,7 +1017,7 @@ button svg {
   height: 12px;
 }
 .list .file-tags {
-  margin-top: 5px;
+  margin-top: 4px;
 }
 .list .list-size,
 .list .list-date {
@@ -955,7 +1029,7 @@ button svg {
 .list-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 82px 124px 45px;
-  padding: 14px 0 14px 90px;
+  padding: 16px 0 16px 92px;
   color: var(--muted);
   font-size: 10px;
 }
@@ -966,7 +1040,7 @@ button svg {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 .trash-collection.list .trash-actions {
   justify-content: flex-start;
@@ -978,15 +1052,15 @@ button svg {
   bottom: 22px;
   z-index: 25;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   background: var(--panel);
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   max-width: 670px;
-  margin: 22px auto 0;
+  margin: 24px auto 0;
 }
 .selection-bar > strong {
   font-size: 12px;
@@ -998,10 +1072,10 @@ button svg {
 .selection-bar > button:not(.icon-button) {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-size: 11px;
   min-height: 34px;
-  padding: 5px 9px;
+  padding: 4px 8px;
   border-radius: 8px;
 }
 .selection-bar > button:hover {
@@ -1012,7 +1086,7 @@ button svg {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 20px;
   min-height: 300px;
   color: var(--muted);
 }
@@ -1037,7 +1111,7 @@ button svg {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 15px 18px;
+  padding: 16px 20px;
   background: var(--danger-soft);
   border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
   color: var(--danger);
@@ -1051,7 +1125,7 @@ button svg {
 }
 .pagination {
   display: flex;
-  gap: 15px;
+  gap: 16px;
   align-items: center;
   justify-content: center;
   font-size: 11px;
@@ -1060,14 +1134,14 @@ button svg {
 .pagination button {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 8px 10px;
+  gap: 4px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
 }
 .page-pagination {
-  margin-top: 30px;
+  margin-top: 32px;
 }
 .shared-list {
   border: 1px solid var(--border);
@@ -1079,7 +1153,7 @@ button svg {
   padding: 20px;
   display: flex;
   align-items: center;
-  gap: 17px;
+  gap: 16px;
   border-bottom: 1px solid var(--border);
 }
 .shared-row:last-child {
@@ -1111,7 +1185,7 @@ button svg {
   display: block;
   color: var(--muted);
   font-size: 11px;
-  margin-top: 5px;
+  margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1142,10 +1216,10 @@ button svg {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 12px 50px #101d3326;
+  box-shadow: 0 12px 50px var(--tone-8);
   width: 228px;
   z-index: 90;
-  padding: 6px;
+  padding: 8px;
   max-height: calc(100dvh - 20px);
   overflow: auto;
   animation: appear 0.13s ease;
@@ -1153,9 +1227,9 @@ button svg {
 .context-menu button {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border-radius: 7px;
   font-size: 12px;
   text-align: left;
@@ -1169,7 +1243,7 @@ button svg {
 .context-menu hr {
   border: 0;
   border-top: 1px solid var(--border);
-  margin: 5px 3px;
+  margin: 4px 4px;
 }
 .context-menu button.danger-text svg {
   color: var(--danger);
@@ -1188,7 +1262,7 @@ button svg {
   position: fixed;
   inset: 0;
   background: var(--overlay);
-  backdrop-filter: blur(7px);
+  backdrop-filter: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1204,15 +1278,15 @@ button svg {
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--panel);
-  box-shadow: 0 25px 90px #0c142440;
-  padding: 26px;
+  box-shadow: 0 25px 90px var(--tone-9);
+  padding: 28px;
 }
 .dialog-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 15px;
-  margin-bottom: 23px;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 .dialog-heading h2 {
   font-size: 18px;
@@ -1222,8 +1296,8 @@ button svg {
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 25px;
+  gap: 12px;
+  margin-top: 24px;
 }
 .field-label {
   display: flex;
@@ -1249,7 +1323,7 @@ button svg {
   gap: 8px;
   font-size: 12px;
   color: var(--muted);
-  padding-bottom: 10px;
+  padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
   min-width: 0;
 }
@@ -1270,8 +1344,8 @@ button svg {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
+  gap: 12px;
+  padding: 8px 12px;
   text-align: left;
   border-radius: 9px;
   font-size: 12px;
@@ -1293,20 +1367,20 @@ button svg {
   color: var(--muted);
 }
 .folder-picker > p {
-  padding: 50px 0;
+  padding: 52px 0;
   text-align: center;
 }
 .tag-options {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   max-height: 270px;
   overflow: auto;
 }
 .tag-option {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
 }
 .tag-option > button:first-child {
   display: flex;
@@ -1314,7 +1388,7 @@ button svg {
   gap: 12px;
   flex: 1;
   min-height: 39px;
-  padding: 9px 12px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 9px;
   text-align: left;
@@ -1367,8 +1441,8 @@ button svg {
 }
 .folder-colors > div {
   display: flex;
-  gap: 10px;
-  margin-top: 9px;
+  gap: 12px;
+  margin-top: 8px;
 }
 .folder-colors button {
   width: 70px;
@@ -1390,7 +1464,7 @@ button svg {
 .version-current {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   margin-bottom: 20px;
 }
 .version-current .art {
@@ -1411,10 +1485,10 @@ button svg {
   display: block;
   color: var(--muted);
   font-size: 10px;
-  margin-top: 7px;
+  margin-top: 8px;
 }
 .version-list {
-  margin-top: 15px;
+  margin-top: 16px;
   max-height: 320px;
   overflow: auto;
 }
@@ -1442,7 +1516,7 @@ button svg {
   align-items: center;
   gap: 12px;
   color: var(--muted);
-  padding: 32px 10px;
+  padding: 32px 12px;
   font-size: 12px;
 }
 .properties-art {
@@ -1479,7 +1553,7 @@ button svg {
   justify-content: space-between;
   align-items: flex-start;
   gap: 20px;
-  padding: 13px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
 }
@@ -1501,7 +1575,7 @@ button svg {
   margin-top: 4px;
 }
 .exif-section {
-  margin-top: 18px;
+  margin-top: 20px;
   border: 1px solid var(--border);
   border-radius: 11px;
   overflow: hidden;
@@ -1509,8 +1583,8 @@ button svg {
 .exif-section summary {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 13px 14px;
+  gap: 8px;
+  padding: 12px 16px;
   cursor: pointer;
   font-size: 12px;
   list-style: none;
@@ -1522,7 +1596,7 @@ button svg {
   font-size: 9px;
   background: var(--blue-soft);
   color: var(--blue-text);
-  padding: 3px 6px;
+  padding: 4px 8px;
   border-radius: 4px;
 }
 .exif-section summary > svg:last-child {
@@ -1534,13 +1608,13 @@ button svg {
 }
 .exif-content {
   border-top: 1px solid var(--border);
-  padding: 5px 14px;
+  padding: 4px 16px;
 }
 .exif-list {
   margin: 0;
 }
 .exif-list > div {
-  padding: 11px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
   display: grid;
   grid-template-columns: 115px minmax(0, 1fr);
@@ -1566,7 +1640,7 @@ button svg {
 .exif-loading {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
 }
 .dialog-wide {
   width: 960px;
@@ -1596,16 +1670,16 @@ button svg {
   background: white;
 }
 .preview-content > p {
-  padding: 30px;
+  padding: 32px;
   text-align: center;
 }
 .audio-preview {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 30px;
+  gap: 32px;
   width: 100%;
-  padding: 30px;
+  padding: 32px;
 }
 .audio-preview .art {
   width: 160px;
@@ -1625,8 +1699,8 @@ button svg {
 .preview-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 18px;
+  gap: 12px;
+  margin-top: 20px;
 }
 .preview-actions > span {
   color: var(--muted);
@@ -1634,7 +1708,7 @@ button svg {
   margin-right: auto;
 }
 .share-warning {
-  padding: 12px 14px;
+  padding: 12px 16px;
   background: var(--blue-soft);
   color: var(--blue-text);
   border-radius: 10px;
@@ -1658,15 +1732,15 @@ button svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 13px;
+  padding: 12px 12px;
   border-bottom: 1px solid var(--border);
 }
 .upload-queue > header > button:first-child {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex: 1;
-  padding: 4px 5px;
+  padding: 4px 4px;
   color: var(--blue-text);
   font-size: 12px;
 }
@@ -1681,8 +1755,8 @@ button svg {
 .transfer {
   display: flex;
   align-items: flex-start;
-  gap: 11px;
-  padding: 17px 15px;
+  gap: 12px;
+  padding: 16px 16px;
   border-bottom: 1px solid var(--border);
 }
 .transfer:last-child {
@@ -1700,8 +1774,8 @@ button svg {
   flex-shrink: 0;
 }
 .transfer.done .transfer-icon {
-  color: #69aa8c;
-  background: #69aa8c15;
+  color: var(--tone-10);
+  background: var(--tone-11);
 }
 .transfer-body {
   flex: 1;
@@ -1720,14 +1794,14 @@ button svg {
   color: var(--muted);
   font-size: 9px;
   line-height: 1.6;
-  margin-top: 5px;
+  margin-top: 4px;
 }
 .transfer.error .transfer-body > span {
   color: var(--danger);
 }
 .transfer .progress-track {
   height: 3px;
-  margin-top: 9px;
+  margin-top: 8px;
 }
 .transfer-actions {
   display: flex;
@@ -1749,19 +1823,19 @@ button svg {
   top: 90px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   max-width: 370px;
   z-index: 150;
 }
 .toast {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow);
-  padding: 14px;
+  padding: 16px;
   color: var(--text);
   font-size: 12px;
   animation: appear 0.15s ease;
@@ -1795,12 +1869,12 @@ button svg {
   justify-content: space-between;
   gap: 20px;
 }
-.storage-overview h2 {
+.storage-overview .storage-total {
   font-size: 29px;
   margin-top: 12px;
   letter-spacing: -1px;
 }
-.storage-overview h2 small {
+.storage-overview .storage-total small {
   font-size: 15px;
   color: var(--muted);
   font-weight: 400;
@@ -1823,7 +1897,7 @@ button svg {
   border-radius: 7px;
   background: var(--border);
   overflow: hidden;
-  margin-top: 30px;
+  margin-top: 32px;
   gap: 2px;
 }
 .storage-bar i {
@@ -1831,25 +1905,25 @@ button svg {
   height: 100%;
 }
 .storage-blue {
-  --storage-color: #7697f4;
+  --storage-color: var(--palette-18);
 }
 .storage-rose {
-  --storage-color: #df9ba9;
+  --storage-color: var(--palette-19);
 }
 .storage-violet {
-  --storage-color: #ad9bdf;
+  --storage-color: var(--palette-20);
 }
 .storage-amber {
-  --storage-color: #d9b76e;
+  --storage-color: var(--palette-21);
 }
 .storage-slate {
-  --storage-color: #65718a;
+  --storage-color: var(--palette-22);
 }
 .storage-free {
-  --storage-color: #e3e8f1;
+  --storage-color: var(--palette-23);
 }
 [data-theme="dark"] .storage-free {
-  --storage-color: #2f394a;
+  --storage-color: var(--palette-24);
 }
 .storage-bar i,
 .storage-legend i {
@@ -1859,14 +1933,14 @@ button svg {
   display: flex;
   gap: 20px;
   flex-wrap: wrap;
-  margin-top: 19px;
+  margin-top: 20px;
   color: var(--muted);
   font-size: 10px;
 }
 .storage-legend > span {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 .storage-legend i {
   display: inline-block;
@@ -1878,16 +1952,16 @@ button svg {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
-  margin-top: 22px;
+  margin-top: 24px;
 }
 .storage-part {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 22px;
+  padding: 24px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
 }
 .storage-part-icon {
@@ -1911,7 +1985,7 @@ button svg {
 .storage-part p {
   color: var(--muted);
   font-size: 9px;
-  margin-top: 6px;
+  margin-top: 8px;
   line-height: 1.5;
 }
 .storage-part > strong {
@@ -1929,17 +2003,17 @@ button svg {
   margin-inline: auto;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 24px;
 }
 .settings-section,
 .users-settings {
   border: 1px solid var(--border);
   background: var(--panel);
   border-radius: 16px;
-  padding: 26px;
+  padding: 28px;
 }
 .settings-section > h3 {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .section-heading {
   display: flex;
@@ -1949,7 +2023,7 @@ button svg {
 }
 .theme-options {
   display: flex;
-  gap: 18px;
+  gap: 20px;
 }
 .theme-card {
   width: 200px;
@@ -1967,20 +2041,20 @@ button svg {
   height: 105px;
   display: flex;
   gap: 12px;
-  padding: 14px;
-  background: #f6f8fc;
+  padding: 16px;
+  background: var(--tone-12);
   border-bottom: 1px solid var(--border);
 }
 .theme-mini > i {
   display: block;
   width: 35px;
   border-radius: 4px;
-  background: #e8edf7;
+  background: var(--tone-13);
 }
 .theme-mini > div {
   flex: 1;
   display: flex;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
   justify-content: center;
 }
@@ -1988,25 +2062,25 @@ button svg {
   display: block;
   width: 32%;
   height: 44px;
-  background: #fff;
-  border: 1px solid #e3e8f2;
+  background: var(--tone-0);
+  border: 1px solid var(--tone-14);
   border-radius: 4px;
 }
 .theme-card.dark .theme-mini {
-  background: #101319;
+  background: var(--tone-15);
 }
 .theme-card.dark .theme-mini > i {
-  background: #232c3d;
+  background: var(--tone-16);
 }
 .theme-card.dark .theme-mini > div > span {
-  background: #1d2533;
-  border-color: #2e3a4e;
+  background: var(--tone-17);
+  border-color: var(--tone-18);
 }
 .theme-card > span {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 13px;
+  gap: 8px;
+  padding: 12px;
   font-size: 12px;
 }
 .theme-card > span > svg:last-child:not(:first-child) {
@@ -2017,13 +2091,13 @@ button svg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 15px;
-  margin-bottom: 21px;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 .users-heading h3 {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .users-heading p {
   color: var(--muted);
@@ -2037,17 +2111,17 @@ button svg {
   border: 1px solid var(--border);
   background: var(--soft);
   border-radius: 6px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   color: var(--muted);
   white-space: nowrap;
 }
 .users-locked > details {
-  margin-top: 18px;
+  margin-top: 20px;
 }
 .users-locked summary {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
   font-size: 12px;
   color: var(--blue-text);
@@ -2056,13 +2130,13 @@ button svg {
   font-size: 11px;
   color: var(--muted);
   line-height: 1.7;
-  margin: 14px 0 8px;
+  margin: 16px 0 8px;
 }
 .users-locked code {
   background: var(--soft);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 5px 7px;
+  padding: 4px 8px;
   font-size: 10px;
   overflow-wrap: anywhere;
   line-height: 2;
@@ -2070,12 +2144,12 @@ button svg {
 .users-note {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 12px;
 }
 .user-form {
   border: 1px solid var(--border);
-  padding: 17px;
+  padding: 16px;
   border-radius: 12px;
   background: var(--soft);
   margin-bottom: 20px;
@@ -2098,7 +2172,7 @@ button svg {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 15px 0;
+  padding: 16px 0;
   border-bottom: 1px solid var(--border);
 }
 .user-row:last-child {
@@ -2127,14 +2201,14 @@ button svg {
 .user-row strong small {
   font-weight: 400;
   font-size: 9px;
-  margin-left: 7px;
+  margin-left: 8px;
   color: var(--muted);
 }
 .user-row > div > span {
   font-size: 10px;
   color: var(--muted);
   display: block;
-  margin-top: 5px;
+  margin-top: 4px;
 }
 .users-list-footer {
   display: flex;
@@ -2167,7 +2241,7 @@ button svg {
 .login-card {
   width: 380px;
   max-width: calc(100% - 36px);
-  padding: 34px;
+  padding: 36px;
   border-radius: 22px;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -2178,12 +2252,12 @@ button svg {
   width: 76px;
   height: 76px;
   object-fit: contain;
-  margin: 0 auto 17px;
+  margin: 0 auto 16px;
 }
 .login-card h1 {
   text-align: center;
   font-size: 25px;
-  margin-bottom: 26px;
+  margin-bottom: 28px;
 }
 .login-card .button {
   margin-top: 12px;
@@ -2217,7 +2291,7 @@ button svg {
     padding: 0 28px;
   }
   .file-collection.grid {
-    gap: 15px;
+    gap: 16px;
   }
   .search-field {
     width: 215px;
@@ -2236,8 +2310,8 @@ button svg {
     height: 110px;
   }
   .storage-part {
-    padding: 18px 15px;
-    gap: 10px;
+    padding: 20px 16px;
+    gap: 12px;
   }
   .storage-part > strong {
     font-size: 12px;
@@ -2251,10 +2325,10 @@ button svg {
   }
   .list-head {
     grid-template-columns: minmax(0, 1fr) 68px 96px 45px;
-    padding-left: 85px;
+    padding-left: 84px;
   }
   .card-info {
-    padding: 14px;
+    padding: 16px;
   }
   .card-meta {
     font-size: 9px;
@@ -2263,20 +2337,20 @@ button svg {
 @media (max-width: 900px) {
   .sidebar {
     width: 206px;
-    padding: 26px 15px 17px;
+    padding: 28px 16px 16px;
   }
   .brand {
     font-size: 22px;
     gap: 8px;
   }
   .main {
-    margin-left: 206px;
+    margin-left: 208px;
   }
   .page-content {
-    padding: 30px 23px 60px;
+    padding: 32px 24px 60px;
   }
   .topbar {
-    padding: 0 23px;
+    padding: 0 24px;
   }
   .file-collection.grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2286,7 +2360,7 @@ button svg {
     height: 160px;
   }
   .file-actions .button {
-    padding: 10px 13px;
+    padding: 12px 12px;
     font-size: 12px;
   }
   .storage-breakdown {
@@ -2296,17 +2370,17 @@ button svg {
     left: 220px;
   }
   .topbar-right {
-    gap: 9px;
+    gap: 8px;
   }
   .storage-overview {
     padding: 24px;
   }
-  .storage-overview h2 {
+  .storage-overview .storage-total {
     font-size: 25px;
   }
   .list .file-card {
     grid-template-columns: 80px minmax(0, 1fr) 65px;
-    padding-right: 43px;
+    padding-right: 44px;
   }
   .list .list-date {
     display: none;
@@ -2328,10 +2402,10 @@ button svg {
     width: 180px;
   }
   .selection-bar {
-    gap: 5px;
+    gap: 4px;
   }
   .selection-bar > button:not(.icon-button) {
-    padding: 5px 7px;
+    padding: 4px 8px;
   }
   .selection-bar > button:not(.icon-button) > span {
     display: none;
@@ -2346,7 +2420,7 @@ button svg {
     transform: translateX(-100%);
     transition: transform 0.22s;
     box-shadow: var(--shadow);
-    padding: 25px 22px 20px;
+    padding: 24px 24px 20px;
   }
   .sidebar-open {
     transform: translateX(0);
@@ -2356,7 +2430,7 @@ button svg {
     position: fixed;
     inset: 0;
     background: var(--overlay);
-    backdrop-filter: blur(3px);
+    backdrop-filter: none;
     z-index: 35;
   }
   .main {
@@ -2368,10 +2442,10 @@ button svg {
   }
   .mobile-menu {
     display: flex;
-    margin-left: -6px;
+    margin-left: -4px;
   }
   .topbar-left {
-    gap: 9px;
+    gap: 8px;
     font-size: 11px;
   }
   .topbar-location {
@@ -2395,7 +2469,7 @@ button svg {
     height: 4px;
   }
   .page-content {
-    padding: 26px 20px 75px;
+    padding: 28px 20px 76px;
   }
   .page-heading {
     margin-bottom: 24px;
@@ -2411,7 +2485,7 @@ button svg {
     margin-bottom: 8px;
   }
   .file-actions {
-    gap: 7px;
+    gap: 8px;
     margin-bottom: 20px;
   }
   .file-actions .button {
@@ -2419,17 +2493,17 @@ button svg {
     min-width: 0;
     min-height: 39px;
     border-radius: 10px;
-    padding: 9px 12px;
+    padding: 8px 12px;
     font-size: 11px;
-    gap: 7px;
+    gap: 8px;
   }
   .file-toolbar {
     margin-bottom: 16px;
-    gap: 13px 10px;
+    gap: 12px 12px;
   }
   .breadcrumbs {
     font-size: 11px;
-    gap: 5px;
+    gap: 4px;
     flex-basis: 100%;
   }
   .breadcrumbs button {
@@ -2439,7 +2513,7 @@ button svg {
     width: auto;
     height: 38px;
     min-width: 90px;
-    padding: 0 10px;
+    padding: 0 12px;
   }
   .search-field input:not([type="checkbox"]) {
     font-size: 11px;
@@ -2451,7 +2525,7 @@ button svg {
   .view-controls select {
     font-size: 10px;
     width: 66px;
-    padding: 6px 0;
+    padding: 8px 0;
   }
   .view-controls > .icon-button {
     width: 24px;
@@ -2465,7 +2539,7 @@ button svg {
     height: 27px;
   }
   .file-collection.grid {
-    gap: 13px;
+    gap: 12px;
   }
   .card-art {
     height: 145px;
@@ -2475,16 +2549,16 @@ button svg {
     height: 108px;
   }
   .card-info {
-    padding: 13px 12px 12px;
+    padding: 12px 12px 12px;
   }
   .file-name {
     font-size: 11px;
   }
   .card-meta {
     font-size: 9px;
-    margin-top: 9px;
+    margin-top: 8px;
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 4px;
   }
   .selection-check {
     opacity: 1;
@@ -2515,24 +2589,24 @@ button svg {
     height: 14px;
   }
   .file-tags {
-    margin-top: 9px;
+    margin-top: 8px;
     gap: 4px;
   }
   .tag-pill {
     font-size: 8px;
-    padding: 3px 6px;
+    padding: 4px 8px;
     max-width: 85px;
   }
   .listing-caption {
-    margin-bottom: 14px;
+    margin-bottom: 16px;
   }
   .listing-caption .text-button {
     font-size: 9px;
   }
   .selection-bar {
     bottom: 14px;
-    padding: 9px 8px;
-    gap: 5px;
+    padding: 8px 8px;
+    gap: 4px;
     border-radius: 12px;
   }
   .selection-bar > strong {
@@ -2569,12 +2643,12 @@ button svg {
     padding: 12px;
   }
   .dialog {
-    padding: 22px 20px;
+    padding: 24px 20px;
     border-radius: 17px;
     max-height: calc(100dvh - 24px);
   }
   .dialog-heading {
-    margin-bottom: 19px;
+    margin-bottom: 20px;
   }
   .dialog-heading h2 {
     font-size: 17px;
@@ -2587,7 +2661,7 @@ button svg {
   }
   .preview-actions .button {
     font-size: 11px;
-    padding: 10px 12px;
+    padding: 12px 12px;
     min-height: 39px;
   }
   .properties-art.photo-art {
@@ -2595,7 +2669,7 @@ button svg {
   }
   .properties-list > div {
     font-size: 11px;
-    gap: 15px;
+    gap: 16px;
   }
   .properties-list dt {
     min-width: 65px;
@@ -2603,19 +2677,19 @@ button svg {
   .exif-list > div {
     grid-template-columns: 100px minmax(0, 1fr);
     font-size: 10px;
-    gap: 10px;
+    gap: 12px;
   }
   .folder-colors button {
     width: 62px;
     height: 60px;
   }
   .storage-overview {
-    padding: 23px 20px;
+    padding: 24px 20px;
   }
-  .storage-overview h2 {
+  .storage-overview .storage-total {
     font-size: 24px;
   }
-  .storage-overview h2 small {
+  .storage-overview .storage-total small {
     font-size: 12px;
   }
   .disk-percentage {
@@ -2626,18 +2700,18 @@ button svg {
   }
   .storage-bar {
     height: 19px;
-    margin-top: 26px;
+    margin-top: 28px;
   }
   .storage-legend {
-    gap: 13px 17px;
+    gap: 12px 16px;
     font-size: 9px;
   }
   .storage-breakdown {
     gap: 12px;
-    margin-top: 18px;
+    margin-top: 20px;
   }
   .storage-part {
-    padding: 18px;
+    padding: 20px;
   }
   .storage-part h3 {
     font-size: 12px;
@@ -2654,7 +2728,7 @@ button svg {
   }
   .settings-section,
   .users-settings {
-    padding: 22px 19px;
+    padding: 24px 20px;
   }
   .theme-options {
     gap: 12px;
@@ -2666,33 +2740,33 @@ button svg {
   .theme-mini {
     height: 94px;
     padding: 12px;
-    gap: 9px;
+    gap: 8px;
   }
   .theme-mini > i {
     width: 25px;
   }
   .theme-card > span {
     font-size: 11px;
-    gap: 7px;
+    gap: 8px;
   }
   .theme-card > span > svg {
     width: 15px;
   }
   .users-heading .button {
     font-size: 11px;
-    padding: 8px 10px;
+    padding: 8px 12px;
     min-height: 36px;
-    gap: 6px;
+    gap: 8px;
   }
   .users-heading h3 {
     font-size: 14px;
   }
   .user-row {
-    gap: 9px;
+    gap: 8px;
   }
   .user-row .badge {
     font-size: 8px;
-    padding: 4px 6px;
+    padding: 4px 8px;
   }
   .user-row strong {
     font-size: 11px;
@@ -2701,7 +2775,7 @@ button svg {
     gap: 8px;
   }
   .shared-row {
-    padding: 17px 14px;
+    padding: 16px 16px;
     gap: 12px;
   }
   .shared-icon {
@@ -2716,7 +2790,7 @@ button svg {
     font-size: 9px;
   }
   .shared-row .button {
-    padding: 7px 10px;
+    padding: 8px 12px;
     font-size: 10px;
     min-height: 34px;
   }
@@ -2726,7 +2800,7 @@ button svg {
     padding-right: 36px;
   }
   .list .card-art {
-    margin-left: 30px;
+    margin-left: 32px;
     width: 34px;
     height: 34px;
   }
@@ -2756,7 +2830,7 @@ button svg {
     font-size: 9px;
   }
   .list-head {
-    padding-left: 74px;
+    padding-left: 76px;
     grid-template-columns: minmax(0, 1fr) 57px 36px;
     font-size: 9px;
   }
@@ -2780,10 +2854,10 @@ button svg {
 }
 @media (max-width: 370px) {
   .page-content {
-    padding: 23px 15px 65px;
+    padding: 24px 16px 64px;
   }
   .topbar {
-    padding: 0 15px;
+    padding: 0 16px;
   }
   .connection-state {
     display: none;
@@ -2799,10 +2873,10 @@ button svg {
     font-size: 8px;
   }
   .card-info {
-    padding: 12px 10px;
+    padding: 12px 12px;
   }
   .file-collection.grid {
-    gap: 10px;
+    gap: 12px;
   }
   .view-controls select {
     width: 62px;
@@ -2814,10 +2888,10 @@ button svg {
     width: 24px;
   }
   .search-field {
-    gap: 6px;
+    gap: 8px;
     padding: 0 8px;
   }
-  .storage-overview h2 {
+  .storage-overview .storage-total {
     font-size: 21px;
   }
   .disk-percentage {
@@ -2862,12 +2936,12 @@ body {
 }
 
 .upload-limit-settings .section-heading {
-  margin-bottom: 23px;
+  margin-bottom: 24px;
 }
 .upload-limit-settings h3 {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .upload-limit-settings h3 svg {
   color: var(--muted);
@@ -2877,7 +2951,7 @@ body {
   color: var(--blue-text);
   font-size: 14px;
   font-weight: 600;
-  padding: 8px 13px;
+  padding: 8px 12px;
   border-radius: 9px;
   min-width: 70px;
   text-align: center;
@@ -2908,7 +2982,9 @@ body {
 }
 .upload-limit-settings input.upload-range:disabled {
   opacity: 0.55;
-  cursor: default;
+  cursor: not-allowed;
+  color: var(--control-disabled-ink);
+  background-color: var(--control-disabled);
 }
 .upload-limit-settings input.upload-range::-webkit-slider-runnable-track {
   height: 5px;
@@ -2926,13 +3002,13 @@ body {
   -webkit-appearance: none;
   width: 19px;
   height: 19px;
-  margin-top: -7px;
+  margin-top: -8px;
   border-radius: 50%;
   border: 3px solid var(--panel);
   background: var(--blue);
   box-shadow:
     0 0 0 1px var(--blue),
-    0 2px 5px #3456a52b;
+    0 2px 5px var(--tone-19);
 }
 .upload-limit-settings input.upload-range::-moz-range-track {
   height: 5px;
@@ -2967,8 +3043,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 15px;
-  margin-top: 23px;
+  gap: 16px;
+  margin-top: 24px;
 }
 .upload-limit-footer > span {
   color: var(--muted);
@@ -2977,7 +3053,7 @@ body {
 .upload-limit-footer .button {
   min-height: 36px;
   font-size: 11px;
-  padding: 8px 14px;
+  padding: 8px 16px;
 }
 :root {
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -2997,13 +3073,13 @@ body,
     transform 0.3s var(--motion-ease);
 }
 .page-content {
-  animation: page-reveal 0.4s var(--motion-ease) backwards;
+  animation: none;
 }
 .file-card {
-  animation: card-reveal 0.42s var(--motion-ease) backwards;
+  animation: none;
 }
 .storage-part {
-  animation: card-reveal 0.5s var(--motion-ease) backwards;
+  animation: none;
 }
 .storage-part-icon {
   width: 62px;
@@ -3038,19 +3114,19 @@ body,
 .selection-toolbar,
 .upload-queue,
 .transfer {
-  animation: card-reveal 0.3s var(--motion-ease) backwards;
+  animation: none;
 }
 .storage-bar {
-  animation: bar-reveal 0.8s var(--motion-ease) backwards;
+  animation: none;
   transform-origin: left;
 }
 .storage-bar > i,
 .progress-track > i,
 .transfer-progress > i {
-  transition: width 0.45s var(--motion-ease);
+  transition: none;
 }
 .theme-toggle svg {
-  animation: theme-reveal 0.35s var(--motion-ease);
+  animation: none;
 }
 .nav-link svg,
 .sidebar nav button svg,
@@ -3178,7 +3254,7 @@ body,
   }
 }
 .editor-dialog {
-  width: min(1160px, calc(100vw - 48px));
+  width: min(1160px, calc(100% - 48px));
   max-width: none;
   height: min(820px, calc(100dvh - 64px));
   padding: 0;
@@ -3199,7 +3275,7 @@ body,
 }
 .editor-toolbar {
   min-height: 56px;
-  padding: 10px 24px;
+  padding: 12px 24px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -3209,7 +3285,7 @@ body,
 .editor-mode {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   font-weight: 550;
   font-size: 13px;
 }
@@ -3231,7 +3307,7 @@ body,
   overflow: auto;
 }
 .editor-error {
-  margin: 10px 20px;
+  margin: 12px 20px;
   flex-shrink: 0;
 }
 .editor-footer {
@@ -3240,14 +3316,14 @@ body,
   padding: 12px 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-shrink: 0;
   background: var(--panel);
 }
 .editor-save-state {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   font-size: 11px;
   color: var(--muted);
   margin-right: auto;
@@ -3256,10 +3332,10 @@ body,
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #d7a858;
+  background: var(--tone-20);
 }
 .editor-save-state > svg:not(.spin) {
-  color: #7bb89b;
+  color: var(--tone-21);
 }
 .text-editor {
   height: 100%;
@@ -3314,7 +3390,7 @@ body,
   align-items: center;
   max-height: 100%;
   max-width: 100%;
-  box-shadow: 0 8px 36px #0002;
+  box-shadow: 0 8px 36px var(--tone-22);
 }
 .photo-canvas-wrap > canvas {
   display: block;
@@ -3329,8 +3405,8 @@ body,
 }
 .crop-selection {
   position: absolute;
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 2000px #0007;
+  border: 2px solid var(--tone-0);
+  box-shadow: 0 0 0 2000px var(--tone-23);
   pointer-events: none;
 }
 .crop-selection > i {
@@ -3339,8 +3415,8 @@ body,
   bottom: 33.333%;
   left: 0;
   right: 0;
-  border-top: 1px solid #ffffff80;
-  border-bottom: 1px solid #ffffff80;
+  border-top: 1px solid var(--tone-24);
+  border-bottom: 1px solid var(--tone-24);
 }
 .crop-selection > i + i {
   top: 0;
@@ -3349,8 +3425,8 @@ body,
   right: 33.333%;
   border-top: 0;
   border-bottom: 0;
-  border-left: 1px solid #ffffff80;
-  border-right: 1px solid #ffffff80;
+  border-left: 1px solid var(--tone-24);
+  border-right: 1px solid var(--tone-24);
 }
 .photo-tools {
   border-left: 1px solid var(--border);
@@ -3365,11 +3441,11 @@ body,
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.03em;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .photo-transform-buttons {
   display: flex;
-  gap: 7px;
+  gap: 8px;
 }
 .photo-transform-buttons > button {
   flex: 1;
@@ -3379,18 +3455,18 @@ body,
 }
 .crop-toggle {
   width: 100%;
-  margin: 9px 0 26px;
+  margin: 8px 0 28px;
   min-height: 38px;
 }
 .photo-adjustment {
   display: block;
   font-size: 11px;
-  margin: 17px 0;
+  margin: 16px 0;
 }
 .photo-adjustment > span {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .photo-adjustment output {
   color: var(--muted);
@@ -3420,21 +3496,21 @@ body,
 .crop-controls label {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 30px;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
-  margin-bottom: 9px;
+  margin-bottom: 8px;
 }
 .crop-controls output {
   text-align: right;
 }
 .crop-controls .text-button {
   color: var(--blue-text);
-  padding: 5px 0;
+  padding: 4px 0;
 }
 .document-editor {
   background: var(--soft);
   min-height: 100%;
-  padding: 18px 28px 36px;
+  padding: 20px 28px 36px;
 }
 .document-note {
   display: flex;
@@ -3444,7 +3520,7 @@ body,
   font-size: 11px;
   color: var(--muted);
   line-height: 1.6;
-  padding: 0 0 18px;
+  padding: 0 0 20px;
 }
 .document-paper {
   width: min(720px, 100%);
@@ -3453,7 +3529,7 @@ body,
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 4px;
-  box-shadow: 0 5px 20px #00000007;
+  box-shadow: 0 5px 20px var(--tone-25);
   padding: 48px 52px;
 }
 .document-paragraph textarea {
@@ -3462,14 +3538,13 @@ body,
   background: transparent;
   border: 1px solid transparent;
   border-radius: 5px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   color: var(--text);
   font:
-    14px/1.7 Georgia,
-    serif;
+    14px/1.7 var(--font-document);
   resize: vertical;
   min-height: 36px;
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
 .document-paragraph textarea:hover {
   border-color: var(--border);
@@ -3491,33 +3566,32 @@ body,
   font-size: 13px;
   border: 1px dashed var(--border);
   border-radius: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .document-locked span {
   display: block;
-  margin-top: 6px;
+  margin-top: 8px;
   font:
-    9px/1.5 -apple-system,
-    sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+    12px/1.5 var(--font-body);
+  text-transform: none;
+  letter-spacing: 0;
 }
 .pdf-editor {
   background: var(--soft);
   min-height: 100%;
-  padding: 22px;
+  padding: 24px;
 }
 .pdf-page-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
+  gap: 20px;
 }
 .pdf-page-card {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  animation: card-reveal 0.3s var(--motion-ease);
+  animation: none;
 }
 .pdf-page-preview {
   height: 240px;
@@ -3531,7 +3605,7 @@ body,
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  box-shadow: 0 3px 16px #0002;
+  box-shadow: 0 3px 16px var(--tone-22);
   background: white;
 }
 .pdf-page-caption {
@@ -3562,7 +3636,7 @@ body,
 }
 @media (max-width: 800px) {
   .editor-dialog {
-    width: calc(100vw - 28px);
+    width: calc(100% - 28px);
     height: calc(100dvh - 28px);
   }
   .photo-editor {
@@ -3577,21 +3651,21 @@ body,
 }
 @media (max-width: 600px) {
   .editor-dialog {
-    width: 100vw;
+    width: 100%;
     height: 100dvh;
     max-height: 100dvh;
     border-radius: 0;
   }
   .editor-dialog .dialog-heading {
-    padding: 15px 18px;
+    padding: 16px 20px;
   }
   .editor-toolbar {
-    padding: 8px 18px;
+    padding: 8px 20px;
     min-height: 48px;
   }
   .editor-footer {
     padding: 12px 16px;
-    gap: 7px;
+    gap: 8px;
     flex-wrap: wrap;
   }
   .editor-save-state {
@@ -3605,7 +3679,7 @@ body,
     margin-right: auto;
   }
   .text-editor textarea {
-    padding: 18px;
+    padding: 20px;
     font-size: 13px;
   }
   .photo-editor {
@@ -3614,7 +3688,7 @@ body,
     height: auto;
   }
   .photo-stage {
-    padding: 22px 16px;
+    padding: 24px 16px;
     min-height: 240px;
   }
   .photo-canvas-wrap > canvas {
@@ -3627,14 +3701,14 @@ body,
     overflow: visible;
   }
   .document-editor {
-    padding: 14px 12px;
+    padding: 16px 12px;
   }
   .document-note {
     font-size: 10px;
     text-align: center;
   }
   .document-paper {
-    padding: 24px 14px;
+    padding: 24px 16px;
   }
   .pdf-editor {
     padding: 16px;
@@ -3659,8 +3733,8 @@ body,
 
 @media (max-width: 380px) {
   .file-actions .button {
-    padding: 9px 8px;
-    gap: 5px;
+    padding: 8px 8px;
+    gap: 4px;
     font-size: 10px;
   }
   .file-actions .button svg {
@@ -3706,7 +3780,7 @@ body,
   min-width: 30px;
   padding: 0;
   border-radius: 0 12px 12px 0;
-  border-left: 1px solid #ffffff30;
+  border-left: 1px solid var(--tone-26);
 }
 .upload-options {
   position: absolute;
@@ -3714,19 +3788,19 @@ body,
   right: 0;
   z-index: 35;
   min-width: 166px;
-  padding: 5px;
+  padding: 4px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--panel);
-  box-shadow: 0 10px 35px #101d3320;
+  box-shadow: 0 10px 35px var(--tone-27);
   animation: appear 0.13s ease;
 }
 .upload-options > button {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 11px 12px;
+  padding: 12px 12px;
   border-radius: 8px;
   font-size: 12px;
   text-align: left;
@@ -3743,9 +3817,9 @@ body,
   }
   .upload-button-group > .button:first-child {
     border-radius: 10px 0 0 10px;
-    padding-right: 6px;
+    padding-right: 8px;
     padding-left: 8px;
-    gap: 5px;
+    gap: 4px;
   }
   .file-actions .upload-options-toggle {
     border-radius: 0 10px 10px 0;
@@ -3772,7 +3846,7 @@ body,
 .file-type-picker {
   border: 0;
   padding: 0;
-  margin: 22px 0 0;
+  margin: 24px 0 0;
   min-width: 0;
 }
 .file-type-picker legend {
@@ -3789,10 +3863,10 @@ body,
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   cursor: pointer;
   min-width: 0;
   background: var(--soft);
@@ -3844,15 +3918,17 @@ body,
 }
 .file-type-picker:disabled .file-type-option {
   opacity: .55;
-  cursor: wait;
+  cursor: not-allowed;
+  color: var(--control-disabled-ink);
+  background-color: var(--control-disabled);
 }
 .photo-canvas-wrap > canvas {
   transition: none;
 }
 @media (max-width: 380px) {
   .file-type-option {
-    padding: 9px 7px;
-    gap: 6px;
+    padding: 8px 8px;
+    gap: 8px;
   }
   .file-type-option > .art {
     width: 26px;
@@ -3861,8 +3937,8 @@ body,
   }
   .editor-footer .button {
     font-size: 11px;
-    padding: 9px 10px;
-    gap: 5px;
+    padding: 8px 12px;
+    gap: 4px;
   }
 }
 
@@ -3916,11 +3992,11 @@ body,
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--panel);
-  box-shadow: 0 4px 20px #0002;
+  box-shadow: 0 4px 20px var(--tone-22);
   padding: 4px;
   cursor: default;
 }
@@ -3964,13 +4040,13 @@ body,
 }
 @media (max-width: 420px) {
   .trash-toolbar {
-    gap: 6px;
+    gap: 8px;
     font-size: 10px;
   }
   .trash-toolbar .button {
     font-size: 10px;
-    padding: 10px;
-    gap: 6px;
+    padding: 12px;
+    gap: 8px;
   }
 }
 

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -28,6 +29,7 @@ import {
 } from "../services/editor";
 import { Dialog } from "./Dialog";
 import { PhotoEditor } from "./PhotoEditor";
+import CodeEditor, { type CodeEditorHandle } from "./CodeEditor";
 
 const PDFEditor = lazy(() => import("./PDFEditor"));
 function ParagraphInput({
@@ -84,8 +86,10 @@ export default function EditorDialog({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [wrap, setWrap] = useState(true);
-  const initial = useRef("");
-  const textBox = useRef<HTMLTextAreaElement>(null);
+  const initial = useRef({ photo: "", paragraphs: "", pages: "" });
+  const [textDirty, setTextDirty] = useState(false);
+  const [editorVersion, setEditorVersion] = useState(0);
+  const codeEditor = useRef<CodeEditorHandle>(null);
   const loadData = useCallback((value: EditorData) => {
     const next = {
       text: value.text || "",
@@ -101,11 +105,14 @@ export default function EditorDialog({
     setPhoto(next.photo);
     setParagraphs(next.paragraphs);
     setPages(next.pages);
-    initial.current = JSON.stringify(next);
+    initial.current = { photo: JSON.stringify(next.photo), paragraphs: JSON.stringify(next.paragraphs), pages: JSON.stringify(next.pages) };
+    setTextDirty(false);
+    setEditorVersion((version) => version + 1);
   }, []);
   useEffect(() => {
     let active = true;
-    api<EditorData>("/editor?path=" + encodeURIComponent(entry.path))
+    const controller = new AbortController();
+    api<EditorData>("/editor?path=" + encodeURIComponent(entry.path), "GET", undefined, controller.signal)
       .then((value) => {
         if (active) loadData(value);
       })
@@ -117,11 +124,13 @@ export default function EditorDialog({
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [entry.path, loadData]);
-  const dirty =
-    !!data &&
-    JSON.stringify({ text, photo, paragraphs, pages }) !== initial.current;
+  const photoDirty = useMemo(() => JSON.stringify(photo) !== initial.current.photo, [photo, editorVersion]);
+  const paragraphsDirty = useMemo(() => JSON.stringify(paragraphs) !== initial.current.paragraphs, [paragraphs, editorVersion]);
+  const pagesDirty = useMemo(() => JSON.stringify(pages) !== initial.current.pages, [pages, editorVersion]);
+  const dirty = !!data && (data.kind === "text" ? textDirty : data.kind === "photo" ? photoDirty : data.kind === "pdf" ? pagesDirty : paragraphsDirty);
   useEffect(() => {
     if (!dirty) return;
     const guard = (event: BeforeUnloadEvent) => {
@@ -138,7 +147,7 @@ export default function EditorDialog({
     try {
       const changes =
         data.kind === "text"
-          ? { text }
+          ? { text: codeEditor.current?.value() ?? text }
           : data.kind === "photo"
             ? { photo }
             : data.kind === "pdf"
@@ -230,7 +239,7 @@ export default function EditorDialog({
               </span>
               <span className="editor-format">
                 {data.format?.toUpperCase()}
-                {data.kind === "text" && " · UTF-8"}
+
               </span>
               {data.kind === "text" && (
                 <button
@@ -252,36 +261,15 @@ export default function EditorDialog({
           {data && (
             <fieldset disabled={busy} className="editor-workspace">
               {data.kind === "text" && (
-                <div className="text-editor">
-                  <textarea
-                    ref={textBox}
-                    aria-label="File contents"
-                    spellCheck={false}
-                    wrap={wrap ? "soft" : "off"}
-                    value={text}
-                    onChange={(event) => {
-                      setText(event.target.value);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Tab") {
-                        event.preventDefault();
-                        const node = event.currentTarget;
-                        const start = node.selectionStart;
-                        document.execCommand("insertText", false, "  ");
-                        if (node.value === text) {
-                          setText(
-                            text.slice(0, start) +
-                              "  " +
-                              text.slice(node.selectionEnd),
-                          );
-                          requestAnimationFrame(() => {
-                            node.selectionStart = node.selectionEnd = start + 2;
-                          });
-                        }
-                      }
-                    }}
-                  />
-                </div>
+                <CodeEditor
+                  key={editorVersion}
+                  ref={codeEditor}
+                  text={text}
+                  format={data.format || "txt"}
+                  wrap={wrap}
+                  disabled={busy}
+                  changed={setTextDirty}
+                />
               )}
               {data.kind === "photo" && (
                 <PhotoEditor
@@ -366,7 +354,7 @@ export default function EditorDialog({
                   Unsaved changes
                 </>
               ) : data?.kind === "text" ? (
-                `${text.split("\n").length.toLocaleString()} lines · ${text.length.toLocaleString()} characters`
+                "Ready to edit"
               ) : (
                 "Ready to edit"
               )}
@@ -396,7 +384,7 @@ export default function EditorDialog({
                 className="button secondary"
                 disabled={busy || !dirty}
                 onClick={() => void save("copy")}
-                title="Save a separate copy · Ctrl/Cmd+Shift+S"
+                title="Save a separate copy (Ctrl/Cmd+Shift+S)"
               >
                 <Copy size={16} />
                 Save copy
@@ -407,7 +395,7 @@ export default function EditorDialog({
                 className="button primary"
                 disabled={busy || !dirty}
                 onClick={() => void save("original")}
-                title="Save original with version history · Ctrl/Cmd+S"
+                title="Save original with version history (Ctrl/Cmd+S)"
               >
                 <Save size={16} />
                 Save

@@ -59,9 +59,11 @@ export async function api<T>(
   url: string,
   method = "GET",
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch("/api" + url, {
     method,
+    signal,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
       ...(csrf ? { "X-CSRF-Token": csrf } : {}),

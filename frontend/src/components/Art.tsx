@@ -1,5 +1,35 @@
 import { Braces, File, FileSpreadsheet, Presentation } from "lucide-react";
 import type { Entry } from "../services/api";
+const icons: Record<string, [string, number, number]> = {
+  folder: ["folders", 0, 0],
+  lavender: ["folders", 1, 0],
+  yellow: ["folders", 2, 0],
+  mint: ["folders", 0, 1],
+  cloud: ["folders", 1, 1],
+  drive: ["folders", 2, 1],
+  images: ["files", 0, 0],
+  videos: ["files", 1, 0],
+  audio: ["files", 2, 0],
+  documents: ["files", 0, 1],
+  archives: ["files", 1, 1],
+  pdf: ["files", 2, 1],
+  sheets: ["extra", 0, 0],
+  slides: ["extra", 1, 0],
+  code: ["extra", 0, 1],
+  file: ["extra", 1, 1],
+  text: ["file-types", 0, 0],
+  markdown: ["file-types", 1, 0],
+  word: ["file-types", 2, 0],
+  opendocument: ["file-types", 3, 0],
+  json: ["file-types", 0, 1],
+  csv: ["file-types", 1, 1],
+  python: ["file-types", 2, 1],
+  javascript: ["file-types", 3, 1],
+  html: ["file-types", 0, 2],
+  css: ["file-types", 1, 2],
+  typescript: ["file-types", 2, 2],
+  sql: ["file-types", 3, 2],
+};
 export function Art({
   kind,
   className = "",
@@ -9,36 +39,6 @@ export function Art({
   className?: string;
   emptyFolder?: boolean;
 }) {
-  const icons: Record<string, [string, number, number]> = {
-    folder: ["folders", 0, 0],
-    lavender: ["folders", 1, 0],
-    yellow: ["folders", 2, 0],
-    mint: ["folders", 0, 1],
-    cloud: ["folders", 1, 1],
-    drive: ["folders", 2, 1],
-    images: ["files", 0, 0],
-    videos: ["files", 1, 0],
-    audio: ["files", 2, 0],
-    documents: ["files", 0, 1],
-    archives: ["files", 1, 1],
-    pdf: ["files", 2, 1],
-    sheets: ["extra", 0, 0],
-    slides: ["extra", 1, 0],
-    code: ["extra", 0, 1],
-    file: ["extra", 1, 1],
-    text: ["file-types", 0, 0],
-    markdown: ["file-types", 1, 0],
-    word: ["file-types", 2, 0],
-    opendocument: ["file-types", 3, 0],
-    json: ["file-types", 0, 1],
-    csv: ["file-types", 1, 1],
-    python: ["file-types", 2, 1],
-    javascript: ["file-types", 3, 1],
-    html: ["file-types", 0, 2],
-    css: ["file-types", 1, 2],
-    typescript: ["file-types", 2, 2],
-    sql: ["file-types", 3, 2],
-  };
   const icon = icons[kind];
   if (!icon) {
     const Icon =

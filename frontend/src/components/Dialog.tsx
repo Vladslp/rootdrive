@@ -29,6 +29,8 @@ export function Dialog({
       target?.focus();
     });
     const key = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.key === "Escape" && event.target instanceof Element && event.target.closest(".cm-editor")) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         closeRef.current();

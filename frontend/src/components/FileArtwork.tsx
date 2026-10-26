@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { type Entry } from "../services/api";
 import { Art, kindOf } from "./Art";
 
@@ -10,7 +10,7 @@ export function isPhoto(entry: Entry) {
   );
 }
 
-export function FileArtwork({
+export const FileArtwork = memo(function FileArtwork({
   entry,
   disabled = false,
 }: {
@@ -37,4 +37,4 @@ export function FileArtwork({
       />
     );
   return <Art kind={kindOf(entry)} emptyFolder={entry.type === "folder" && entry.child_count === 0} />;
-}
+});

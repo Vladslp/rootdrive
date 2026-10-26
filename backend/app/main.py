@@ -89,7 +89,7 @@ def create_app(settings: Settings | None = None):
         response.headers['Referrer-Policy'] = 'same-origin'
         response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
         if request.url.path.startswith('/api/'):
-            response.headers['Cache-Control'] = 'no-store'
+            response.headers.setdefault('Cache-Control', 'no-store')
         return response
 
     @app.get('/api/health')

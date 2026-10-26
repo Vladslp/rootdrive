@@ -234,7 +234,8 @@ export default function App() {
   useEffect(() => {
     if (!ready) return;
     let active = true;
-    api<Stats>("/storage/stats")
+    const controller = new AbortController();
+    api<Stats>("/storage/stats", "GET", undefined, controller.signal)
       .then((result) => {
         if (active) {
           setStats(result);
@@ -246,6 +247,7 @@ export default function App() {
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [ready, revision, view === "storage"]);
   useEffect(() => {
@@ -254,6 +256,7 @@ export default function App() {
       return;
     }
     let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError("");
     setSelection([]);
@@ -276,7 +279,7 @@ export default function App() {
           : view === "files"
             ? "/files"
             : "/collection";
-    api<Listing & { items: Shared[] }>(endpoint + "?" + params)
+    api<Listing & { items: Shared[] }>(endpoint + "?" + params, "GET", undefined, controller.signal)
       .then((result) => {
         if (active) {
           if (view === "shares") setShares(result);
@@ -293,6 +296,7 @@ export default function App() {
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [
     ready,
@@ -696,7 +700,7 @@ export default function App() {
           }
           key={`${view}:${path}:${activeTag}`}
         >
-          <div className="page-heading">
+          <div className={"workbench-heading" + (view === "files" ? " has-actions" : "")}><div className="page-heading">
             <div>
               <h1>
                 {view === "files" && path ? path.split("/").pop() : title}
@@ -723,31 +727,6 @@ export default function App() {
               </button>
             )}
           </div>
-          {view === "trash" && (
-            <div className="trash-toolbar">
-              <span className="muted">{selected.length ? `${selected.length} selected` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>
-              {selected.length > 0 && (
-                <button className="icon-button" aria-label="Clear selection" onClick={() => setSelection([])}><X size={16} /></button>
-              )}
-              <div className="layout-toggle trash-layout">
-                <button className={layout === "grid" ? "active" : ""} aria-label="Grid view" onClick={() => setLayout("grid")}><LayoutGrid size={17} /></button>
-                <button className={layout === "list" ? "active" : ""} aria-label="List view" onClick={() => setLayout("list")}><List size={18} /></button>
-              </div>
-              <button
-                className="button secondary danger-text"
-                disabled={busy || loading || !!error || !listing.total || !listing.revision}
-                onClick={() => selected.length ? chooseAction("purge", selected) : setModal({
-                  action: "emptytrash",
-                  entries: [],
-                  trashRevision: listing.revision,
-                  total: listing.total,
-                })}
-              >
-                <Trash2 size={16} />
-                {selected.length ? "Remove selected" : "Remove all"}
-              </button>
-            </div>
-          )}
           {view === "files" && (
             <div
               className="file-actions"
@@ -771,6 +750,32 @@ export default function App() {
                 <span>New folder</span>
               </button>
               <UploadButton choose={chooseUpload} />
+            </div>
+          )}
+          </div>
+          {view === "trash" && (
+            <div className="trash-toolbar">
+              <span className="muted">{selected.length ? `${selected.length} selected` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>
+              {selected.length > 0 && (
+                <button className="icon-button" aria-label="Clear selection" onClick={() => setSelection([])}><X size={16} /></button>
+              )}
+              <div className="layout-toggle trash-layout">
+                <button className={layout === "grid" ? "active" : ""} aria-label="Grid view" onClick={() => setLayout("grid")}><LayoutGrid size={17} /></button>
+                <button className={layout === "list" ? "active" : ""} aria-label="List view" onClick={() => setLayout("list")}><List size={18} /></button>
+              </div>
+              <button
+                className="button secondary danger-text"
+                disabled={busy || loading || !!error || !listing.total || !listing.revision}
+                onClick={() => selected.length ? chooseAction("purge", selected) : setModal({
+                  action: "emptytrash",
+                  entries: [],
+                  trashRevision: listing.revision,
+                  total: listing.total,
+                })}
+              >
+                <Trash2 size={16} />
+                {selected.length ? "Remove selected" : "Remove all"}
+              </button>
             </div>
           )}
           {fileView && (
@@ -1261,7 +1266,7 @@ export default function App() {
                   Previous
                 </button>
                 <span>
-                  {offset + 1}–
+                  {offset + 1}to
                   {Math.min(
                     offset + pageSize,
                     view === "shares" ? shares.total : listing.total,
@@ -1810,11 +1815,11 @@ function Storage({
       <section className="storage-overview">
         <div className="storage-overview-top">
           <div>
-            <span className="muted">Disk usage</span>
-            <h2>
+            <h2 className="storage-label">Disk usage</h2>
+            <p className="storage-total">
               {bytes(stats.disk_used)}
               <small> / {bytes(stats.disk_total)}</small>
-            </h2>
+            </p>
           </div>
           <span className="disk-percentage">
             {stats.disk_percent}

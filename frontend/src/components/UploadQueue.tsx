@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import {
   Check,
   ChevronDown,
@@ -20,11 +20,12 @@ export function UploadQueue({
   queue: ReturnType<typeof useUploads>;
   notify: (text: string) => void;
 }) {
+  const transfers = useSyncExternalStore(queue.subscribe, queue.getSnapshot);
   const [collapsed, setCollapsed] = useState(false);
   const [reselecting, setReselecting] = useState<Transfer | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  if (!queue.transfers.length) return null;
-  const active = queue.transfers.filter((item) => item.state !== "done").length;
+  if (!transfers.length) return null;
+  const active = transfers.filter((item) => item.state !== "done").length;
   const safe = (action: Promise<unknown>) =>
     action.catch((error) => notify(error.message));
   return (
@@ -39,7 +40,7 @@ export function UploadQueue({
           </strong>
           {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
-        {queue.transfers.some((item) => item.state === "done") && (
+        {transfers.some((item) => item.state === "done") && (
           <button
             className="icon-button"
             aria-label="Clear completed uploads"
@@ -51,7 +52,7 @@ export function UploadQueue({
       </header>
       {!collapsed && (
         <div className="transfers">
-          {queue.transfers.map((item) => (
+          {transfers.map((item) => (
             <div className={"transfer " + item.state} key={item.key}>
               <div className="transfer-icon">
                 {item.state === "done" ? (

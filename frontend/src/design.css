@@ -1351,3 +1351,5 @@ body, .sidebar, .topbar, .settings-section, .storage-part {
   .storage-part, .storage-part .storage-artwork { transition: none !important; }
   .storage-part:hover, .storage-part:hover .storage-artwork { transform: none; }
 }
+
+.selection-marquee { left: 0; top: 0; }

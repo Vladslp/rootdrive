@@ -30,11 +30,13 @@ export type Transfer = {
 };
 
 export function useUploads(ready: boolean, completed: () => void) {
+  const scheduleRetry = useRef<() => void>(() => {});
   const listeners = useRef(new Set<() => void>());
   const snapshot = useRef<Transfer[]>([]);
   const runRef = useRef<() => Promise<void>>(async () => {});
   const setTransfers = useCallback((items: Transfer[]) => {
     snapshot.current = items;
+    scheduleRetry.current();
     listeners.current.forEach((listener) => listener());
     queueMicrotask(() => { void runRef.current(); });
   }, []);
@@ -243,24 +245,35 @@ export function useUploads(ready: boolean, completed: () => void) {
     void run();
   }, [run]);
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const waiting = () => ref.current.some((item) => item.state === "waiting" && item.file && (item.retries || 0) <= 3);
+    const schedule = () => {
+      if (!ready || document.hidden || !navigator.onLine || !waiting()) {
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        return;
+      }
+      if (timer === null) timer = setTimeout(retry, 15000);
+    };
     const retry = () => {
-      if (!ref.current.some((item) => item.state === "waiting" && item.file && (item.retries || 0) <= 3)) return;
-      ref.current = ref.current.map((item) =>
-        item.state === "waiting" && item.file && (item.retries || 0) <= 3
-          ? { ...item, state: "queued" }
-          : item,
-      );
+      timer = null;
+      if (!ready || document.hidden || !navigator.onLine || !waiting()) { schedule(); return; }
+      ref.current = ref.current.map((item) => item.state === "waiting" && item.file && (item.retries || 0) <= 3 ? { ...item, state: "queued" } : item);
       setTransfers(ref.current);
     };
-    const interval = window.setInterval(() => {
-      if (navigator.onLine) retry();
-    }, 15000);
+    scheduleRetry.current = schedule;
     window.addEventListener("online", retry);
+    window.addEventListener("offline", schedule);
+    document.addEventListener("visibilitychange", schedule);
+    schedule();
     return () => {
-      clearInterval(interval);
+      scheduleRetry.current = () => {};
+      if (timer !== null) clearTimeout(timer);
       window.removeEventListener("online", retry);
+      window.removeEventListener("offline", schedule);
+      document.removeEventListener("visibilitychange", schedule);
     };
-  }, []);
+  }, [ready, setTransfers]);
   const add = (sources: UploadSource[], base: string, replacement?: string) => {
     const fresh: Transfer[] = sources.map(({ file, relative }) => ({
       key:

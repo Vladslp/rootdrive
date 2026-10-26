@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -64,7 +65,7 @@ import {
 import { Art, kindOf } from "./components/Art";
 import { canEdit, editorKind } from "./services/editor";
 import { StorageArtwork } from "./components/StorageArtwork";
-import { FileArtwork } from "./components/FileArtwork";
+import { FileCard } from "./components/FileCard";
 import { SurfaceAction } from "./components/SurfaceAction";
 import { Dialog } from "./components/Dialog";
 import {
@@ -127,26 +128,33 @@ export default function App() {
   const [sort, setSort] = useState("name");
   const [direction, setDirection] = useState("asc");
   const [offset, setOffset] = useState(0);
+  const [revision, setRevision] = useState(0);
+  const listingCache = useRef(new Map<string, { value: Listing; at: number }>());
+  const cacheKey = useCallback((nextView: View, nextPath: string, nextTag: string, nextSearch: string, nextOffset: number) =>
+    JSON.stringify([nextView, nextPath, nextTag, nextSearch, recursive, sort, direction, nextOffset, revision]),
+  [recursive, sort, direction, revision]);
   const [listing, setListing] = useState<Listing>({ items: [], total: 0 });
   const [shares, setShares] = useState<{ items: Shared[]; total: number }>({
     items: [],
     total: 0,
   });
+  const statsRevision = useRef<number | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [statsError, setStatsError] = useState("");
-  const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
   const [layout, setLayout] = useState(
-    readPreference("rootdrive-layout", "grid"),
+    () => readPreference("rootdrive-layout", "grid"),
   );
   const [theme, setTheme] = useState<Theme>(
     document.documentElement.dataset.theme === "dark" ? "dark" : "light",
   );
   const [sidebar, setSidebar] = useState(false);
   const [modal, setModal] = useState<Modal | null>(null);
+  const modalRef = useRef(modal);
+  modalRef.current = modal;
   const [context, setContext] = useState<{
     entry: Entry;
     x: number;
@@ -233,12 +241,13 @@ export default function App() {
     writePreference("rootdrive-layout", layout);
   }, [layout]);
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || (view !== "storage" && statsRevision.current === revision)) return;
     let active = true;
     const controller = new AbortController();
     api<Stats>("/storage/stats", "GET", undefined, controller.signal)
       .then((result) => {
         if (active) {
+          statsRevision.current = revision;
           setStats(result);
           setStatsError("");
         }
@@ -252,13 +261,20 @@ export default function App() {
     };
   }, [ready, revision, view === "storage"]);
   useEffect(() => {
+    listingCache.current.clear();
+  }, [account?.auth_enabled, account?.user?.username, revision]);
+  useEffect(() => {
     if (!ready || (!fileView && view !== "trash" && view !== "shares")) {
       setLoading(false);
       return;
     }
     let active = true;
     const controller = new AbortController();
-    setLoading(true);
+    const key = cacheKey(view, path, activeTag, search, offset);
+    const cached = view === "shares" ? undefined : listingCache.current.get(key);
+    const usable = cached && Date.now() - cached.at < 15000;
+    if (usable) setListing(cached.value);
+    setLoading(!usable);
     setError("");
     setSelection([]);
     const params = new URLSearchParams({
@@ -284,7 +300,14 @@ export default function App() {
       .then((result) => {
         if (active) {
           if (view === "shares") setShares(result);
-          else setListing(result);
+          else {
+            const previous = listingCache.current.get(key)?.value;
+            const value = previous && JSON.stringify(previous) === JSON.stringify(result) ? previous : result;
+            listingCache.current.delete(key);
+            listingCache.current.set(key, { value, at: Date.now() });
+            if (listingCache.current.size > 12) listingCache.current.delete(listingCache.current.keys().next().value!);
+            setListing(value);
+          }
           if (!result.items.length && offset && result.total <= offset)
             setOffset(Math.max(0, offset - pageSize));
         }
@@ -310,6 +333,7 @@ export default function App() {
     offset,
     activeTag,
     revision,
+    cacheKey,
   ]);
   useEffect(() => {
     folderInput.current?.setAttribute("webkitdirectory", "");
@@ -367,8 +391,13 @@ export default function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items]);
-  function navigate(next: View, destination = "", tag = "") {
+  const navigate = useCallback((next: View, destination = "", tag = "") => {
     window.scrollTo({ top: 0, behavior: "instant" });
+    const cached = next === "shares" ? undefined : listingCache.current.get(cacheKey(next, destination, tag, "", 0));
+    const usable = cached && Date.now() - cached.at < 15000;
+    if (usable) setListing(cached.value);
+    setLoading(Boolean(["files", "favorites", "tag", "trash", "shares"].includes(next)) && !usable);
+    setError("");
     setView(next);
     setPath(destination);
     setActiveTag(tag);
@@ -379,8 +408,8 @@ export default function App() {
     setSidebar(false);
     setContext(null);
     setTagContext(null);
-  }
-  function tagMenuProps(tag: Tag) {
+  }, [cacheKey]);
+  const tagMenuProps = useCallback((tag: Tag) => {
     function show(x: number, y: number) {
       setContext(null);
       setTagContext({
@@ -404,29 +433,30 @@ export default function App() {
         }
       },
     };
-  }
-  function done(message = "Saved") {
+  }, []);
+  const done = useCallback((message = "Saved") => {
     setModal(null);
     setSelection([]);
     refresh();
     notify(message);
-  }
-  async function perform(action: () => Promise<unknown>, message: string) {
+  }, [refresh, notify]);
+  const perform = useCallback(async (action: () => Promise<unknown>, message: string) => {
+    const actionName = modalRef.current?.action;
     setBusy(true);
     try {
       await action();
       done(message);
     } catch (error) {
       notify((error as Error).message);
-      if ((modal?.action === "emptytrash" || modal?.action === "purge") && [404, 409].includes((error as { status?: number }).status || 0)) {
+      if ((actionName === "emptytrash" || actionName === "purge") && [404, 409].includes((error as { status?: number }).status || 0)) {
         setModal(null);
         refresh();
       }
     } finally {
       setBusy(false);
     }
-  }
-  function open(entry: Entry) {
+  }, [done, notify]);
+  const open = useCallback((entry: Entry) => {
     if (entry.type === "folder") navigate("files", entry.path);
     else
       setModal({
@@ -435,7 +465,7 @@ export default function App() {
           : "preview",
         entries: [entry],
       });
-  }
+  }, [navigate]);
   async function download(entries: Entry[]) {
     if (entries.length === 1 && entries[0].type === "file") {
       saveURL(fileURL(entries[0]));
@@ -454,7 +484,7 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function favorite(entry: Entry) {
+  const favorite = useCallback(async (entry: Entry) => {
     try {
       await api("/favorites", "POST", {
         paths: [entry.path],
@@ -464,16 +494,23 @@ export default function App() {
     } catch (error) {
       notify((error as Error).message);
     }
-  }
+  }, [refresh, notify]);
   function chooseUpload(folder = false, replacement?: string) {
     replacePath.current = replacement;
     if (folder) folderInput.current?.click();
     else filesInput.current?.click();
   }
-  function chooseAction(action: Modal["action"], entries: Entry[]) {
+  const chooseAction = useCallback((action: Modal["action"], entries: Entry[]) => {
     setContext(null);
     setModal({ action, entries });
-  }
+  }, []);
+  const cardActions = useMemo(() => ({
+    open, chooseAction, favorite, navigate, tagMenuProps,
+    clearTagContext: () => setTagContext(null),
+    context: setContext,
+    select: (key: string, checked: boolean) => setSelection((current) => checked ? [...current, key] : current.filter((item) => item !== key)),
+    restore: (entry: Entry) => void perform(() => api("/trash/restore", "POST", { id: entry.id }), "Restored"),
+  }), [open, chooseAction, favorite, navigate, tagMenuProps, perform]);
   const title =
     view === "tag"
       ? tags.find((tag) => tag.id === activeTag)?.name || "Tag"
@@ -490,7 +527,7 @@ export default function App() {
   if (!account)
     return (
       <div className="connection-screen">
-        <img src="/assets/app-icon.png?v=flat-roots-2" alt="RootDrive" />
+        <img src="/assets/icons/app.webp" alt="RootDrive" />
         <h1>RootDrive</h1>
         {accountError ? (
           <>
@@ -529,7 +566,7 @@ export default function App() {
           <span className="brand-mark">
             <img
               className="brand-logo"
-              src="/assets/app-icon.png?v=flat-roots-2"
+              src="/assets/icons/app.webp"
               alt=""
             />
           </span>
@@ -618,8 +655,7 @@ export default function App() {
         onPointerDown={marquee.pointerDown}
         className={
           "main " +
-          (dragging ? "is-dragging " : "") +
-          (marquee.rectangle ? "is-selecting-files" : "")
+          (dragging ? "is-dragging " : "")
         }
         onDragEnter={(event) => {
           if (view === "files" && event.dataTransfer.types.includes("Files")) {
@@ -665,7 +701,7 @@ export default function App() {
               <Menu size={22} />
             </button>
             <button className="mobile-brand" onClick={() => navigate("files")} aria-label="RootDrive home">
-              <img src="/assets/app-icon.png?v=flat-roots-2" alt="" />
+              <img src="/assets/icons/app.webp" alt="" />
               <span>RootDrive</span>
             </button>
           </div>
@@ -972,185 +1008,12 @@ export default function App() {
                       <span />
                     </div>
                   )}
-                  {listing.items.map((entry, index) => (
-                    <article
-                      key={entry.id || entry.path}
-                      data-selection-path={selectionKey(entry)}
-                      style={{
-                        animationDelay: Math.min(index, 10) * 24 + "ms",
-                      }}
-                      className={
-                        "file-card " +
-                        (entry.type === "folder" ? "folder-card " : "") +
-                        (selection.includes(selectionKey(entry)) ? "selected" : "")
-                      }
-                      onContextMenu={(event) => {
-                        if (view === "trash") return;
-                        event.preventDefault();
-                        setTagContext(null);
-                        setContext({
-                          entry,
-                          x: Math.min(event.clientX, window.innerWidth - 240),
-                          y: Math.max(
-                            8,
-                            Math.min(event.clientY, window.innerHeight - 470),
-                          ),
-                        });
-                      }}
-                    >
-                      <SurfaceAction
-                        label={"Open " + entry.name}
-                        activate={() => view === "trash" ? chooseAction("properties", [entry]) : open(entry)}
-                      />
-                      <div className="card-art">
-                        <div className="card-open">
-                          <FileArtwork entry={entry} disabled={view === "trash"} />
-                        </div>
-                        {selectionView && (
-                          <label
-                            className={
-                              "selection-check " +
-                              (selection.includes(selectionKey(entry)) ? "checked" : "")
-                            }
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selection.includes(selectionKey(entry))}
-                              aria-label={"Select " + entry.name}
-                              onChange={(event) =>
-                                setSelection((current) =>
-                                  event.target.checked
-                                    ? [...current, selectionKey(entry)]
-                                    : current.filter(
-                                        (item) => item !== selectionKey(entry),
-                                      ),
-                                )
-                              }
-                            />
-                            <Check size={13} />
-                          </label>
-                        )}
-                        {view !== "trash" && (
-                          <button
-                            className={
-                              "favorite-toggle " +
-                              (entry.favorite ? "is-favorite" : "")
-                            }
-                            aria-label={
-                              (entry.favorite ? "Unfavorite " : "Favorite ") +
-                              entry.name
-                            }
-                            onClick={() => favorite(entry)}
-                          >
-                            <Star
-                              size={16}
-                              fill={entry.favorite ? "currentColor" : "none"}
-                            />
-                          </button>
-                        )}
-                        <button
-                          className="card-more icon-button"
-                          aria-label={"Actions for " + entry.name}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (view === "trash") {
-                              chooseAction("properties", [entry]);
-                              return;
-                            }
-                            const rect =
-                              event.currentTarget.getBoundingClientRect();
-                            setTagContext(null);
-                            setContext({
-                              entry,
-                              x: Math.max(
-                                8,
-                                Math.min(
-                                  rect.right - 220,
-                                  window.innerWidth - 240,
-                                ),
-                              ),
-                              y: Math.max(
-                                8,
-                                Math.min(
-                                  rect.bottom + 6,
-                                  window.innerHeight - 470,
-                                ),
-                              ),
-                            });
-                          }}
-                        >
-                          <MoreHorizontal size={19} />
-                        </button>
-                      </div>
-                      <div className="card-info">
-                        <span className="file-name" title={entry.name}>
-                          {entry.name}
-                        </span>
-                        <div className="card-meta">
-                          <span>
-                            {bytes(entry.size)}
-                          </span>
-                          <time>{date(entry.modified)}</time>
-                        </div>
-                        {Boolean(entry.tags?.length) && (
-                          <div className="file-tags">
-                            {entry.tags?.slice(0, 3).map((tag) => (
-                              <button
-                                className={"tag-pill " + tag.color}
-                                key={tag.id}
-                                {...tagMenuProps(tag)}
-                                onClick={() => navigate("tag", "", tag.id)}
-                              >
-                                {tag.name}
-                              </button>
-                            ))}
-                            {(entry.tags?.length || 0) > 3 && (
-                              <span className="more-tags">
-                                +{entry.tags!.length - 3}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {(view === "favorites" ||
-                          view === "tag" ||
-                          (recursive && search)) && (
-                          <span className="entry-path">
-                            /{entry.path.split("/").slice(0, -1).join("/")}
-                          </span>
-                        )}
-                        {view === "trash" && (
-                          <div className="trash-actions">
-                            <button
-                              className="text-button"
-                              disabled={busy}
-                              onClick={() =>
-                                perform(
-                                  () =>
-                                    api("/trash/restore", "POST", {
-                                      id: entry.id,
-                                    }),
-                                  "Restored",
-                                )
-                              }
-                            >
-                              <History size={14} />
-                              Restore
-                            </button>
-                            <button
-                              className="icon-button danger-text"
-                              aria-label={"Permanently delete " + entry.name}
-                              onClick={() => chooseAction("purge", [entry])}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <span className="list-size">
-                        {bytes(entry.size)}
-                      </span>
-                      <span className="list-date">{date(entry.modified)}</span>
-                    </article>
+                  {listing.items.map((entry) => (
+                    <FileCard key={entry.id || entry.path} entry={entry}
+                      selected={selection.includes(selectionKey(entry))}
+                      trash={view === "trash"}
+                      showPath={view === "favorites" || view === "tag" || Boolean(recursive && search)}
+                      busy={view === "trash" && busy} actions={cardActions} />
                   ))}
                 </div>
               )
@@ -1389,20 +1252,7 @@ export default function App() {
         }}
       />
       <UploadQueue queue={queue} notify={notify} />
-      {marquee.rectangle &&
-        createPortal(
-          <div
-            className="selection-marquee"
-            aria-hidden="true"
-            style={{
-              left: marquee.rectangle.left,
-              top: marquee.rectangle.top,
-              width: marquee.rectangle.right - marquee.rectangle.left,
-              height: marquee.rectangle.bottom - marquee.rectangle.top,
-            }}
-          />,
-          document.body,
-        )}
+      {createPortal(<div ref={marquee.overlay} className="selection-marquee" aria-hidden="true" hidden />, document.body)}
       <div className="toast-stack" aria-live="polite">
         {toasts.map((toast) => (
           <div className="toast" key={toast.id}>
@@ -1905,7 +1755,7 @@ function Login({
       <form className="login-card" onSubmit={submit}>
         <img
           className="login-logo"
-          src="/assets/app-icon.png?v=flat-roots-2"
+          src="/assets/icons/app.webp"
           alt=""
         />
         <h1>RootDrive</h1>

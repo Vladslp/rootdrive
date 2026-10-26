@@ -15,7 +15,7 @@ const { createRoot } = await import("react-dom/client");
 const { useMarqueeSelection } = await import(
   "../src/hooks/useMarqueeSelection.ts"
 );
-let root, host, frames, offset, elapsed, frameId, captures;
+let root, host, frames, offset, elapsed, frameId, captures, renders, cardReads;
 const locations = {
   A: [250, 320, 450, 520],
   B: [480, 320, 680, 520],
@@ -36,6 +36,7 @@ function rectangle(left, top, right, bottom) {
   };
 }
 function Harness({ initial = [], enabled = true, scope = "files" }) {
+  renders++;
   const [selection, change] = useState(initial);
   const marquee = useMarqueeSelection({ enabled, scope, selection, change });
   return h(
@@ -54,8 +55,7 @@ function Harness({ initial = [], enabled = true, scope = "files" }) {
       ),
     ),
     h("output", { "data-selection": true }, selection.join(",")),
-    marquee.rectangle &&
-      h("div", { "data-marquee": true, "data-top": marquee.rectangle.top }),
+    h("div", { ref: marquee.overlay, "data-marquee": true, hidden: true }),
   );
 }
 function render(props = {}) {
@@ -105,6 +105,8 @@ function end(x = 245, y = 310) {
   pointer(window, "pointerup", x, y);
 }
 beforeEach(() => {
+  renders = 0;
+  cardReads = 0;
   frames = new Map();
   offset = 0;
   elapsed = 0;
@@ -140,6 +142,7 @@ beforeEach(() => {
     if (this.classList.contains("file-collection"))
       return rectangle(240, 300 - offset, 700, 760 - offset);
     const bounds = locations[this.dataset.selectionPath];
+    if (bounds) cardReads++;
     return bounds
       ? rectangle(bounds[0], bounds[1] - offset, bounds[2], bounds[3] - offset)
       : rectangle(0, 0, 0, 0);
@@ -159,10 +162,10 @@ test("drag selects intersecting cards and finishes without leaving a frame", () 
   start();
   move();
   assert.deepEqual(selected(), ["A"]);
-  assert.ok(host.querySelector("[data-marquee]"));
+  assert.ok(host.querySelector("[data-marquee]:not([hidden])"));
   end();
   assert.deepEqual(selected(), ["A"]);
-  assert.equal(host.querySelector("[data-marquee]"), null);
+  assert.equal(host.querySelector("[data-marquee]:not([hidden])"), null);
 });
 
 test("shrinking a rectangle removes cards that leave its bounds", () => {
@@ -205,7 +208,7 @@ test("Escape restores the previous selection and stops the active gesture", () =
   window.removeEventListener("keydown", listener);
   assert.equal(reachedGlobal, false);
   assert.deepEqual(selected(), ["C"]);
-  assert.equal(host.querySelector("[data-marquee]"), null);
+  assert.equal(host.querySelector("[data-marquee]:not([hidden])"), null);
   move(500, 300);
   assert.deepEqual(selected(), ["C"]);
 });
@@ -240,7 +243,7 @@ test("touch, card controls, toolbar and disabled views do not start selection", 
   move();
   end();
   assert.deepEqual(selected(), ["C"]);
-  assert.equal(host.querySelector("[data-marquee]"), null);
+  assert.equal(host.querySelector("[data-marquee]:not([hidden])"), null);
 });
 
 test("pointer cancellation releases capture and restores selection", () => {
@@ -258,7 +261,7 @@ test("autoscroll updates the selection while keeping the frame below the header"
   move(245, 890);
   assert.ok(offset > 0);
   move(245, -10);
-  assert.ok(Number(host.querySelector("[data-marquee]").dataset.top) >= 76);
+  assert.ok(Number(host.querySelector("[data-marquee]:not([hidden])").style.transform.match(/, ([\d.]+)px/)[1]) >= 76);
   end(245, -10);
 });
 
@@ -267,7 +270,7 @@ test("navigation cancels the gesture and removes global listeners", () => {
   start();
   move();
   render({ scope: "other-folder" });
-  assert.equal(host.querySelector("[data-marquee]"), null);
+  assert.equal(host.querySelector("[data-marquee]:not([hidden])"), null);
   assert.equal(main().hasPointerCapture(1), false);
   assert.equal(frames.size, 0);
 });
@@ -291,6 +294,33 @@ for (const type of ["blur", "resize", "lostpointercapture"])
       ),
     );
     assert.deepEqual(selected(), ["D"]);
-    assert.equal(host.querySelector("[data-marquee]"), null);
+    assert.equal(host.querySelector("[data-marquee]:not([hidden])"), null);
     assert.equal(frames.size, 0);
   });
+
+
+test("stationary dragging schedules no frames and pointer motion does not reread card geometry", () => {
+  render();
+  start();
+  move(247, 312);
+  const initialRenders = renders;
+  const initialReads = cardReads;
+  assert.equal(frames.size, 0);
+  for (let index = 0; index < 30; index++) move(246 + index % 2, 311);
+  assert.equal(renders, initialRenders);
+  assert.equal(cardReads, initialReads);
+  assert.equal(frames.size, 0);
+  end();
+});
+
+test("selection stops its autoscroll and restores state when the page is hidden", () => {
+  render({ initial: ["B"] });
+  pointer(main(), "pointerdown", 700, 780);
+  move(245, 890);
+  Object.defineProperty(document, "hidden", { configurable: true, value: true });
+  act(() => document.dispatchEvent(new window.Event("visibilitychange")));
+  assert.equal(frames.size, 0);
+  assert.deepEqual(selected(), ["B"]);
+  assert.equal(host.querySelector("[data-marquee]:not([hidden])"), null);
+  Object.defineProperty(document, "hidden", { configurable: true, value: false });
+});

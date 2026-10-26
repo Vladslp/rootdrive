@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, afterEach, beforeEach, test } from "node:test";
 import { createRequire } from "node:module";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,6 +19,10 @@ const require = createRequire(import.meta.url);
 const result = await build({
   entryPoints: [fileURLToPath(new URL("../src/App.tsx", import.meta.url))], bundle: true, format: "esm", platform: "node", mainFields: ["module", "main"], jsx: "automatic", write: false,
   plugins: [{ name: "shared-react", setup(builder) {
+    builder.onLoad({ filter: /(?:App|FileCard)\.tsx$/ }, async ({ path }) => {
+      const text = await readFile(path, "utf8");
+      return { contents: text.replace(/<article\s/g, '<article data-render-probe={(globalThis.cardRenders.push(entry.path), undefined)} '), loader: "tsx" };
+    });
     builder.onResolve({ filter: /^(?:react|react-dom)(?:\/.*)?$/ }, ({ path }) => ({ path: pathToFileURL(require.resolve(path)).href, external: true }));
     builder.onResolve({ filter: /\/EditorDialog$/ }, () => ({ path: "unused-editor", external: true }));
   } }],
@@ -33,7 +37,7 @@ const { createRoot } = await import("react-dom/client");
 const tag = { id: "tag-1", name: "Travel", color: "blue" };
 const folder = { name: "Folder", path: "Folder", type: "folder", size: 12, modified: 1, child_count: 1, tags: [tag] };
 const photo = { name: "photo.png", path: "photo.png", type: "file", size: 12, modified: 1, mime: "image/png" };
-let host, root, requests;
+let host, root, requests, delayListing, additionalFiles;
 function button(label) {
   const found = [...host.querySelectorAll("button")].find((node) => (node.getAttribute("aria-label") || node.textContent.trim()) === label);
   assert.ok(found, label);
@@ -44,6 +48,9 @@ function heading() { return host.querySelector("h1")?.textContent; }
 beforeEach(async () => {
   window.localStorage.clear();
   requests = [];
+  globalThis.cardRenders = [];
+  delayListing = null;
+  additionalFiles = [];
   globalThis.fetch = async (value, options = {}) => {
     const url = new URL(value, "http://localhost");
     requests.push({ url, method: options.method || "GET", body: options.body && JSON.parse(options.body) });
@@ -52,7 +59,7 @@ beforeEach(async () => {
     else if (url.pathname === "/api/tags") data = { items: [tag] };
     else if (url.pathname === "/api/uploads") data = { items: [] };
     else if (url.pathname === "/api/storage/stats") data = { file_count: 1, stored_bytes: 12, disk_total: 1000, disk_free: 800, disk_used: 200, disk_percent: 20, system_bytes: 188, trash_bytes: 0, versions_bytes: 0, uploads_bytes: 0, cache_bytes: 0, exports_bytes: 0, categories: { images: 12, videos: 0, documents: 0, other: 0 } };
-    else if (url.pathname === "/api/files") data = { items: url.searchParams.get("path") ? [] : [folder, photo], total: url.searchParams.get("path") ? 0 : 2 };
+    else if (url.pathname === "/api/files") { if (delayListing) await delayListing; data = { items: url.searchParams.get("path") ? [] : [folder, photo, ...additionalFiles], total: url.searchParams.get("path") ? 0 : 2 + additionalFiles.length }; }
     else if (url.pathname === "/api/collection") data = { items: [], total: 0 };
     else if (url.pathname === "/api/trash") data = { items: [{ ...folder, id: "trash-1" }], total: 1, revision: "revision" };
     return { ok: true, json: async () => data };
@@ -112,4 +119,99 @@ test("trash restore and selection stay independent of the card open action", asy
   assert.equal(heading(), "Trash");
   assert.ok(requests.some(({ url, method, body }) => url.pathname === "/api/trash/restore" && method === "POST" && body.id === "trash-1"));
   assert.equal(host.querySelector('[role="dialog"]'), null);
+});
+
+
+test("opening a menu does not rerender the file cards", async () => {
+  globalThis.cardRenders = [];
+  await click("Actions for Folder");
+  assert.deepEqual(globalThis.cardRenders, []);
+});
+
+test("changing selection rerenders only the changed card", async () => {
+  globalThis.cardRenders = [];
+  await act(async () => host.querySelector('input[aria-label="Select Folder"]').click());
+  assert.deepEqual(globalThis.cardRenders, ["Folder"]);
+});
+
+test("typing in search leaves the existing cards alone until results change", async () => {
+  globalThis.cardRenders = [];
+  const input = host.querySelector('input[aria-label="Search files"]');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  await act(async () => {
+    setter.call(input, "photo");
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  assert.equal(input.value, "photo");
+  assert.deepEqual(globalThis.cardRenders, []);
+});
+
+test("returning to a cached folder shows its files while revalidating them", async () => {
+  await click("Open Folder");
+  let release;
+  delayListing = new Promise((resolve) => { release = resolve; });
+  await click("My files");
+  try {
+    assert.ok(host.querySelector('[data-selection-path="Folder"]'));
+    assert.equal(host.querySelector(".loading-area"), null);
+    globalThis.cardRenders = [];
+    await act(async () => release());
+    assert.deepEqual(globalThis.cardRenders, []);
+  } finally { release(); }
+});
+
+test("mutations invalidate the folder cache", async () => {
+  await click("Open Folder");
+  await click("New folder");
+  const name = host.querySelector('input');
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(name, "New child");
+    name.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  await act(async () => host.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+  let release;
+  delayListing = new Promise((resolve) => { release = resolve; });
+  await click("My files");
+  try {
+    assert.equal(host.querySelector('[data-selection-path="Folder"]'), null);
+    assert.ok(host.querySelector(".loading-area"));
+  } finally { await act(async () => release()); }
+});
+
+
+test("sixty cards remain untouched by menus and only one rerenders on selection", async () => {
+  additionalFiles = Array.from({ length: 58 }, (_, index) => ({ ...photo, name: `Extra ${index}.txt`, path: `Extra ${index}.txt`, mime: "text/plain" }));
+  await click("Favorites");
+  await click("My files");
+  assert.equal(host.querySelectorAll(".file-card").length, 60);
+  globalThis.cardRenders = [];
+  await click("Actions for Folder");
+  assert.deepEqual(globalThis.cardRenders, []);
+  await act(async () => window.dispatchEvent(new window.Event("click")));
+  await act(async () => host.querySelector('input[aria-label="Select Folder"]').click());
+  assert.deepEqual(globalThis.cardRenders, ["Folder"]);
+});
+
+test("cached listings expire and do not replace fresh server validation", async () => {
+  await click("Open Folder");
+  const originalNow = Date.now;
+  let release;
+  delayListing = new Promise((resolve) => { release = resolve; });
+  Date.now = () => originalNow() + 16000;
+  try {
+    await click("My files");
+    assert.equal(host.querySelector('[data-selection-path="Folder"]'), null);
+    assert.ok(host.querySelector(".loading-area"));
+  } finally {
+    await act(async () => release());
+    Date.now = originalNow;
+  }
+});
+
+test("leaving Storage does not request another disk inventory", async () => {
+  await click("Storage");
+  const count = requests.filter(({ url }) => url.pathname === "/api/storage/stats").length;
+  await click("My files");
+  assert.equal(requests.filter(({ url }) => url.pathname === "/api/storage/stats").length, count);
 });

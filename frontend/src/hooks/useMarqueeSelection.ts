@@ -1,7 +1,6 @@
 import {
   useEffect,
   useRef,
-  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
@@ -37,7 +36,7 @@ export function useMarqueeSelection({
 }) {
   const container = useRef<HTMLElement>(null);
   const stop = useRef<(() => void) | null>(null);
-  const [rectangle, setRectangle] = useState<SelectionRect | null>(null);
+  const overlay = useRef<HTMLDivElement>(null);
   useEffect(() => {
     return () => {
       stop.current?.();
@@ -77,7 +76,16 @@ export function useMarqueeSelection({
     const additive = event.ctrlKey || event.metaKey || event.shiftKey;
     const cards = [
       ...collection.querySelectorAll<HTMLElement>("[data-selection-path]"),
-    ].map((element) => ({ element, path: element.dataset.selectionPath! }));
+    ].map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { path: element.dataset.selectionPath!, bounds: {
+        left: rect.left + window.scrollX, right: rect.right + window.scrollX,
+        top: rect.top + window.scrollY, bottom: rect.bottom + window.scrollY,
+      } };
+    });
+    const surfaceRect = surface.getBoundingClientRect();
+    const bounds = { left: surfaceRect.left + window.scrollX, right: surfaceRect.right + window.scrollX, bottom: surfaceRect.bottom + window.scrollY };
+    const collectionTop = collection.getBoundingClientRect().top + window.scrollY;
     let pointer = { x: event.clientX, y: event.clientY };
     let last = [...previous];
     let active = false;
@@ -85,23 +93,22 @@ export function useMarqueeSelection({
     let timestamp = 0;
     const header = surface.querySelector<HTMLElement>(".topbar");
     function update() {
-      const bounds = surface!.getBoundingClientRect();
-      const top = collection!.getBoundingClientRect().top;
+      const top = collectionTop;
       const documentRect = {
         left: Math.max(
-          bounds.left + window.scrollX,
+          bounds.left,
           Math.min(start.x, pointer.x + window.scrollX),
         ),
         right: Math.min(
-          bounds.right + window.scrollX,
+          bounds.right,
           Math.max(start.x, pointer.x + window.scrollX),
         ),
         top: Math.max(
-          top + window.scrollY,
+          top,
           Math.min(start.y, pointer.y + window.scrollY),
         ),
         bottom: Math.min(
-          bounds.bottom + window.scrollY,
+          bounds.bottom,
           Math.max(start.y, pointer.y + window.scrollY),
         ),
       };
@@ -124,21 +131,16 @@ export function useMarqueeSelection({
         visible.right > visible.left && visible.bottom > visible.top
           ? visible
           : null;
-      setRectangle((current) =>
-        current &&
-        nextRectangle &&
-        current.left === nextRectangle.left &&
-        current.right === nextRectangle.right &&
-        current.top === nextRectangle.top &&
-        current.bottom === nextRectangle.bottom
-          ? current
-          : nextRectangle,
-      );
-      const hits = cards
-        .filter(({ element }) =>
-          intersects(viewportRect, element.getBoundingClientRect()),
-        )
-        .map(({ path }) => path);
+      const hits = cards.filter((card) => intersects(documentRect, card.bounds)).map((card) => card.path);
+      if (overlay.current) {
+        overlay.current.hidden = !nextRectangle;
+        if (nextRectangle) {
+          overlay.current.style.transform = `translate(${visible.left}px, ${visible.top}px)`;
+          overlay.current.style.width = `${visible.right - visible.left}px`;
+          overlay.current.style.height = `${visible.bottom - visible.top}px`;
+        }
+      }
+      surface!.toggleAttribute("data-selecting-files", Boolean(nextRectangle));
       const next = selectionPaths(previous, hits, additive);
       if (
         next.length !== last.length ||
@@ -149,19 +151,20 @@ export function useMarqueeSelection({
       }
     }
     function tick(now: number) {
+      frame = 0;
       if (!active) return;
+      const previousScroll = window.scrollY;
       const elapsed = timestamp ? Math.min(2, (now - timestamp) / 16.67) : 1;
       timestamp = now;
-      const bounds = surface!.getBoundingClientRect();
       const top = header?.getBoundingClientRect().bottom || 0;
-      if (pointer.x >= bounds.left && pointer.x <= bounds.right) {
+      if (pointer.x + window.scrollX >= bounds.left && pointer.x + window.scrollX <= bounds.right) {
         const up =
           pointer.y < top + 52 ? -Math.min(1, (top + 52 - pointer.y) / 52) : 0;
         const down =
           pointer.y > window.innerHeight - 52
             ? Math.min(1, (pointer.y - window.innerHeight + 52) / 52)
             : 0;
-        const velocity = down && bounds.bottom > window.innerHeight ? down : up;
+        const velocity = down && bounds.bottom > window.innerHeight + window.scrollY ? down : up;
         if (velocity)
           window.scrollBy({
             top: velocity * 18 * elapsed,
@@ -169,7 +172,10 @@ export function useMarqueeSelection({
           });
       }
       update();
-      frame = requestAnimationFrame(tick);
+      if (window.scrollY !== previousScroll) schedule();
+    }
+    function schedule() {
+      if (active && !frame) frame = requestAnimationFrame(tick);
     }
     function move(event: PointerEvent) {
       if (event.pointerId !== identifier) return;
@@ -182,13 +188,18 @@ export function useMarqueeSelection({
         ) >= 5
       ) {
         active = true;
-        frame = requestAnimationFrame(tick);
       }
-      if (active) event.preventDefault();
+      if (active) {
+        schedule();
+        event.preventDefault();
+      }
     }
     function cleanup() {
       cancelAnimationFrame(frame);
       window.removeEventListener("pointermove", move);
+      window.removeEventListener("scroll", schedule);
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("pagehide", cancel);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("blur", cancel);
@@ -197,7 +208,8 @@ export function useMarqueeSelection({
       surface!.removeEventListener("lostpointercapture", cancel);
       if (surface!.hasPointerCapture(identifier))
         surface!.releasePointerCapture(identifier);
-      setRectangle(null);
+      if (overlay.current) overlay.current.hidden = true;
+      surface!.removeAttribute("data-selecting-files");
       stop.current = null;
     }
     function finish(event: PointerEvent) {
@@ -211,6 +223,9 @@ export function useMarqueeSelection({
       change(previous);
       cleanup();
     }
+    function visibility() {
+      if (document.hidden) cancel();
+    }
     function key(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -221,11 +236,14 @@ export function useMarqueeSelection({
     surface.setPointerCapture(identifier);
     surface.addEventListener("lostpointercapture", cancel);
     window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("scroll", schedule, { passive: true });
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("pagehide", cancel);
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", cancel);
     window.addEventListener("blur", cancel);
     window.addEventListener("resize", cancel);
     window.addEventListener("keydown", key, true);
   }
-  return { container, pointerDown, rectangle };
+  return { container, pointerDown, overlay };
 }

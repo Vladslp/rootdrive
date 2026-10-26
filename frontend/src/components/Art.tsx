@@ -55,20 +55,10 @@ export function Art({
       </div>
     );
   }
-  const columns = icon[0] === "file-types" ? 4 : icon[0] === "extra" ? 2 : 3;
-  const rows = icon[0] === "file-types" ? 3 : 2;
+  const name = emptyFolder && icon[0] === "folders" ? "empty-" + kind : kind;
   return (
-    <div
-      aria-hidden="true"
-      className={"art " + className}
-      style={{
-        backgroundImage: `url(/assets/${emptyFolder && icon[0] === "folders" ? "empty-folders" : icon[0]}.png${icon[0] === "file-types" ? "?v=clean-2" : ""})`,
-        backgroundSize: icon[0] === "file-types" ? `${1448 / 320 * 100}% ${1086 / 342 * 100}%` : `${columns * 100}% ${rows * 100}%`,
-        backgroundPosition: icon[0] === "file-types"
-          ? `${(68 + icon[1] * 342) / (1448 - 320) * 100}% ${(34 + icon[2] * 335) / (1086 - 342) * 100}%`
-          : `${icon[1] * 100 / (columns - 1)}% ${icon[2] * 100 / (rows - 1)}%`,
-      }}
-    />
+    <div aria-hidden="true" className={"art " + className}
+      style={{ backgroundImage: `url(/assets/icons/${name}.webp)`, backgroundSize: "100% 100%" }} />
   );
 }
 export function kindOf(entry: Entry) {

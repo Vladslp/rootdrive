@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { createRequire } from "node:module";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,8 +12,23 @@ import { createElement as h, act, useSyncExternalStore } from "react";
 const dom = new JSDOM("<!doctype html><html><body></body></html>");
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true });
 Object.defineProperty(globalThis, "navigator", { value: { onLine: true, userAgent: "node" }, configurable: true });
-let retry;
-window.setInterval = (callback) => { retry = callback; return 1; };
+let scheduledRetries = 0;
+const nativeTimeout = globalThis.setTimeout;
+const nativeClearTimeout = globalThis.clearTimeout;
+const retryTimers = new Map();
+globalThis.setTimeout = (callback, delay, ...args) => {
+  if (delay === 15000) {
+    scheduledRetries++;
+    const key = Symbol();
+    retryTimers.set(key, callback);
+    return key;
+  }
+  return nativeTimeout(callback, delay, ...args);
+};
+globalThis.clearTimeout = (timer) => {
+  if (!retryTimers.delete(timer)) nativeClearTimeout(timer);
+};
+Object.defineProperty(document, "hidden", { configurable: true, value: false });
 const require = createRequire(import.meta.url);
 const compiled = await build({
   stdin: { contents: 'export { useUploads } from "./useUploads";', resolveDir: fileURLToPath(new URL("../src/hooks/", import.meta.url)), loader: "tsx" },
@@ -53,7 +68,7 @@ test("upload progress is isolated from the file manager, throttled, and does not
   try {
     await act(async () => root.render(h(Parent)));
     const initialRenders = queueRenders;
-    act(() => retry());
+    act(() => window.dispatchEvent(new window.Event("online")));
     assert.equal(queueRenders, initialRenders);
     await act(async () => queue.add([{ file: new dom.window.File(["x".repeat(1000)], "test.txt"), relative: "test.txt" }], ""));
     const beforeProgress = queueRenders;
@@ -67,13 +82,54 @@ test("upload progress is isolated from the file manager, throttled, and does not
     assert.equal(host.textContent, "100");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 225)); });
     assert.equal(completed, 1);
+    assert.equal(scheduledRetries, 0);
     assert.equal(parentRenders, 1);
     const doneRenders = queueRenders;
-    act(() => retry());
+    act(() => window.dispatchEvent(new window.Event("online")));
     assert.equal(queueRenders, doneRenders);
   } finally {
     await act(async () => root.unmount());
     host.remove();
-    window.close();
+  }
+});
+
+
+after(() => window.close());
+test("upload retries sleep when idle, offline or hidden and resume a waiting transfer", async () => {
+  let queue;
+  const job = { id: "retry-job", size: 10, received: 0, status: "open" };
+  globalThis.uploadTestAPI = async (url, method = "GET") => url === "/uploads" && method === "GET" ? { items: [] } : job;
+  globalThis.uploadTestChunk = async () => { throw new TypeError("Offline"); };
+  function Parent() { queue = useUploads(true, () => {}); return null; }
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(Parent)));
+    assert.equal(retryTimers.size, 0);
+    await act(async () => queue.add([{ file: new dom.window.File(["0123456789"], "retry.txt"), relative: "retry.txt" }], ""));
+    assert.equal(queue.getSnapshot()[0].state, "waiting");
+    assert.equal(retryTimers.size, 1);
+    navigator.onLine = false;
+    act(() => window.dispatchEvent(new window.Event("offline")));
+    assert.equal(retryTimers.size, 0);
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    navigator.onLine = true;
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    assert.equal(retryTimers.size, 0);
+    assert.equal(queue.getSnapshot()[0].state, "waiting");
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    act(() => document.dispatchEvent(new window.Event("visibilitychange")));
+    assert.equal(retryTimers.size, 1);
+    globalThis.uploadTestChunk = async () => ({ ...job, received: 10 });
+    const [key, retry] = [...retryTimers][0];
+    retryTimers.delete(key);
+    await act(async () => retry());
+    assert.equal(queue.getSnapshot()[0].state, "done");
+    assert.equal(retryTimers.size, 0);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    assert.equal(retryTimers.size, 0);
   }
 });

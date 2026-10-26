@@ -5,14 +5,84 @@ PROJECT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 cd "$PROJECT_DIR"
 umask 077
 
+validate_server_arguments() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --help|-h)
+                printf '%s\n' 'Usage: ./start.sh --server-install [--install-dir PATH] [--data-dir PATH] [--no-service]' 'Installs Linux dependencies, builds RootDrive and enables a systemd service.' 'Defaults: /opt/rootdrive, /var/lib/rootdrive, service user rootdrive.' 'Existing installed configuration and data are preserved. Source workspace data is not migrated.' 'Use --no-service on Linux systems without systemd.'
+                exit 0
+                ;;
+            --no-service) NEED_SERVICE=no; shift ;;
+            --install-dir|--data-dir)
+                if [ "$#" -lt 2 ] || [ -z "$2" ]; then printf 'Missing value for %s\n' "$1" >&2; exit 2; fi
+                shift 2
+                ;;
+            *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
+        esac
+    done
+}
+
+install_server() {
+    NEED_SERVICE=yes
+    validate_server_arguments "$@"
+
+    if [ "$(uname -s)" != Linux ]; then
+        printf '%s\n' 'Server installation requires Linux. Use ./start.sh --start for a local launch on this system.' >&2
+        exit 1
+    fi
+    case "$(uname -m)" in
+        x86_64|amd64|aarch64|arm64) ;;
+        *) printf '%s\n' 'Automatic installation supports 64-bit x86 and ARM Linux. Use a 64-bit OS on Raspberry Pi.' >&2; exit 1 ;;
+    esac
+    if [ "$NEED_SERVICE" = yes ] && { ! command -v systemctl >/dev/null 2>&1 || [ ! -d /run/systemd/system ]; }; then
+        printf '%s\n' 'systemd is not running. Use --no-service to install without a system service.' >&2
+        exit 1
+    fi
+
+    if [ "$(id -u)" -ne 0 ]; then
+        if ! command -v sudo >/dev/null 2>&1; then
+            printf '%s\n' 'Administrator access is required. Run this script as root or install sudo.' >&2
+            exit 1
+        fi
+        printf '%s\n' 'Administrator access is needed to install system packages and the service.'
+        exec sudo -- sh "$PROJECT_DIR/start.sh" --server-install "$@"
+    fi
+
+    printf '\n  RootDrive  /  Server setup\n\n  [1/5] System dependencies\n\n'
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        env DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip python3-dev build-essential pkg-config libheif-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt1-dev ca-certificates tar util-linux passwd
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y python3 python3-pip python3-devel gcc gcc-c++ make pkgconf-pkg-config libheif-devel libjpeg-turbo-devel zlib-devel libxml2-devel libxslt-devel ca-certificates tar util-linux shadow-utils
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -S --needed --noconfirm python python-pip base-devel pkgconf libheif libjpeg-turbo zlib libxml2 libxslt ca-certificates tar util-linux shadow
+    else
+        printf '%s\n' 'Automatic dependency installation supports apt, dnf and pacman. Install Python 3.11+, venv, pip, tar and runuser manually on this distribution.' >&2
+        exit 1
+    fi
+
+    INSTALL_PYTHON=
+    for candidate in python3 python3.14 python3.13 python3.12 python3.11 python; do
+        if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys,venv,ensurepip; sys.exit(0 if sys.version_info >= (3,11) else 1)' 2>/dev/null; then
+            INSTALL_PYTHON=$(command -v "$candidate")
+            break
+        fi
+    done
+    if [ -z "$INSTALL_PYTHON" ]; then
+        printf '%s\n' 'Python 3.11+ with venv is required. Use Debian 12+, Ubuntu 24.04+ or Raspberry Pi OS 64-bit Bookworm or newer.' >&2
+        exit 1
+    fi
+    exec "$INSTALL_PYTHON" "$PROJECT_DIR/backend/app/server_install.py" "$@"
+}
+
 MODE=start
 case "${1:-}" in
     "") if [ -t 0 ] && [ -t 1 ]; then MODE=menu; fi ;;
     --start) MODE=start ;;
     --install-only) MODE=install ;;
-    --server-install) shift; exec sh "$PROJECT_DIR/server-install.sh" "$@" ;;
+    --server-install) shift; install_server "$@"; exit $? ;;
     --help|-h)
-        printf '%s\n' 'Usage: ./start.sh [--start | --install-only | --server-install [options]]' 'Installs missing project dependencies, builds the frontend when needed, and starts RootDrive.' 'Requires Python 3.11+. Node.js and npm are needed only to build the frontend.' 'Interactive mode offers local launch or Linux server installation.' 'Use --start to skip the menu; --server-install forwards installer options.' 'Stop the server with Ctrl+C or ./stop.sh.'
+        printf '%s\n' 'Usage: ./start.sh [--start | --install-only | --server-install [options]]' 'Installs missing project dependencies, builds the frontend when needed, and starts RootDrive.' 'Requires Python 3.11+. Node.js and npm are needed only to build the frontend.' 'Interactive mode offers local launch or Linux server installation.' 'Use --start to skip the menu; --server-install installs the Linux service.' 'Stop the server with Ctrl+C or ./stop.sh.'
         exit 0
         ;;
     *) printf '%s\n' "Unknown option: $1" 'Usage: ./start.sh [--start | --install-only | --server-install [options]]' >&2; exit 2 ;;
@@ -67,7 +137,7 @@ if [ "$MODE" = menu ]; then
         if ! IFS= read -r ROOTDRIVE_CHOICE; then printf '\n'; exit 0; fi
         case "$ROOTDRIVE_CHOICE" in
             ''|1) MODE=start; break ;;
-            2) exec sh "$PROJECT_DIR/server-install.sh" ;;
+            2) install_server; exit $? ;;
             0) exit 0 ;;
             *) printf '  Choose 1, 2 or 0.\n' ;;
         esac

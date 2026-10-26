@@ -49,7 +49,7 @@ def source_tree(path):
     for name in ['backend', 'frontend']:
         (path / name).mkdir()
         (path / name / 'source.txt').write_text('application')
-    for name in ['start.sh', 'stop.sh', 'server-install.sh', 'run.py', 'requirements.txt', '.env.example', 'README.md']:
+    for name in ['start.sh', 'stop.sh', 'run.py', 'requirements.txt', '.env.example', 'README.md']:
         (path / name).write_text('source')
     (path / '.env').write_text('PRIVATE_SOURCE_VALUE=secret')
     (path / 'storage').mkdir()
@@ -90,8 +90,10 @@ def test_install_and_repeat_preserve_data_and_configuration(isolated_installer):
     assert json.loads((application / '.rootdrive-server.json').read_text())['state'] == str(state)
     configuration.write_text('HOST=127.0.0.1\nAUTH_ENABLED=true\n')
     (state / 'storage/photo.jpg').write_bytes(b'preserved')
+    (application / 'server-install.sh').write_text('obsolete launcher')
     installer.install(application, state, False)
     assert 'AUTH_ENABLED=true' in configuration.read_text()
+    assert not (application / 'server-install.sh').exists()
     assert (state / 'storage/photo.jpg').read_bytes() == b'preserved'
     assert any('--install-only' in call for call in calls)
     assert not any('systemctl' in call for call in calls)
@@ -129,8 +131,11 @@ def test_unit_uses_unprivileged_account_and_quoted_paths():
 def launcher(tmp_path):
     path = tmp_path / 'Project with spaces'
     path.mkdir()
-    (path / 'start.sh').write_text((PROJECT / 'start.sh').read_text())
-    (path / 'server-install.sh').write_text('#!/bin/sh\nprintf "SERVER-INSTALL"\nprintf " <%s>" "$@"\nprintf "\\n"\n')
+    source = (PROJECT / 'start.sh').read_text()
+    begin = source.index('install_server() {')
+    end = source.index('\n}\n\nMODE=start', begin) + 2
+    source = source[:begin] + 'install_server() {\n    printf "SERVER-INSTALL"\n    printf " <%s>" "$@"\n    printf "\\n"\n    exit 0\n}' + source[end:]
+    (path / 'start.sh').write_text(source)
     (path / '.env').write_text('HOST=127.0.0.1\n')
     (path / '.venv/bin').mkdir(parents=True)
     fake = path / '.venv/bin/python'
@@ -199,9 +204,9 @@ def test_start_flags_are_noninteractive_and_forward_arguments(launcher):
 
 
 def test_server_installer_help_and_argument_errors():
-    help_result = subprocess.run(['sh', PROJECT / 'server-install.sh', '--help'], capture_output=True, text=True)
+    help_result = subprocess.run(['sh', PROJECT / 'start.sh', '--server-install', '--help'], capture_output=True, text=True)
     assert help_result.returncode == 0 and '--no-service' in help_result.stdout
-    invalid = subprocess.run(['sh', PROJECT / 'server-install.sh', '--unknown'], capture_output=True, text=True)
+    invalid = subprocess.run(['sh', PROJECT / 'start.sh', '--server-install', '--unknown'], capture_output=True, text=True)
     assert invalid.returncode == 2 and 'Unknown option' in invalid.stderr
 
 
@@ -233,7 +238,7 @@ def test_bootstrap_uses_stub_packages_and_preserves_forwarded_paths(tmp_path):
         executable = binaries / name
         executable.write_text(source)
         executable.chmod(0o755)
-    result = subprocess.run(['sh', PROJECT / 'server-install.sh', '--no-service', '--data-dir', str(tmp_path / 'data with spaces')], capture_output=True, text=True, check=True, env={**os.environ, 'PATH': str(binaries) + os.pathsep + os.defpath})
+    result = subprocess.run(['sh', PROJECT / 'start.sh', '--server-install', '--no-service', '--data-dir', str(tmp_path / 'data with spaces')], capture_output=True, text=True, check=True, env={**os.environ, 'PATH': str(binaries) + os.pathsep + os.defpath})
     assert 'PACKAGE <update>' in result.stdout
     assert 'PACKAGE <install> <-y>' in result.stdout
     assert f'<--data-dir> <{tmp_path / "data with spaces"}>' in result.stdout
@@ -291,3 +296,21 @@ def test_existing_node_checks_run_as_the_service_user(tmp_path, monkeypatch):
     assert installer.ensure_node(tmp_path, tmp_path / 'state', SimpleNamespace(pw_uid=1001, pw_gid=1001)) == binaries
     assert len(calls) == 2 and calls[0][1]['quiet'] is True
     assert calls[1][0][1] == '--version'
+
+
+def test_privilege_escalation_reenters_the_same_launcher_mode(tmp_path):
+    binaries = tmp_path / 'bin'
+    binaries.mkdir()
+    commands = {
+        'uname': '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo aarch64 ;; esac\n',
+        'id': '#!/bin/sh\necho 1000\n',
+        'sudo': '#!/bin/sh\nprintf "SUDO"\nprintf " <%s>" "$@"\nprintf "\\n"\n',
+    }
+    for name, source in commands.items():
+        executable = binaries / name
+        executable.write_text(source)
+        executable.chmod(0o755)
+    result = subprocess.run(['sh', PROJECT / 'start.sh', '--server-install', '--no-service', '--data-dir', str(tmp_path / 'data with spaces')], capture_output=True, text=True, check=True, env={**os.environ, 'PATH': str(binaries) + os.pathsep + os.defpath})
+    assert f'SUDO <--> <sh> <{PROJECT / "start.sh"}> <--server-install> <--no-service>' in result.stdout
+    assert f'<--data-dir> <{tmp_path / "data with spaces"}>' in result.stdout
+    assert 'System dependencies' not in result.stdout

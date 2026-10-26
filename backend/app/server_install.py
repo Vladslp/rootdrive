@@ -99,7 +99,7 @@ def copy_application(source, destination):
     excluded = shutil.ignore_patterns('.git', '.venv', '.runtime', '__pycache__', 'node_modules', 'dist', '.DS_Store', '.env*', '.npmrc', '.pypirc', '*.pyc', '.pytest_cache', '*.tsbuildinfo')
     for name in ['backend', 'frontend']:
         shutil.copytree(source / name, destination / name, dirs_exist_ok=True, ignore=excluded)
-    for name in ['start.sh', 'stop.sh', 'server-install.sh', 'run.py', 'requirements.txt', '.env.example', 'README.md']:
+    for name in ['start.sh', 'stop.sh', 'run.py', 'requirements.txt', '.env.example', 'README.md']:
         shutil.copy2(source / name, destination / name)
 
 
@@ -246,6 +246,9 @@ def install(application, state, service=True):
     marker.write_text(json.dumps({'application': str(application), 'state': str(state), 'service_user': SERVICE_USER}) + '\n')
     state_marker.write_text('rootdrive\n')
     copy_application(SOURCE, application)
+    legacy_launcher = application / 'server-install.sh'
+    if legacy_launcher.is_file() or legacy_launcher.is_symlink():
+        legacy_launcher.unlink()
     environment_file = application / '.env'
     if environment_file.is_symlink():
         raise ValueError('The installed .env must not be a symbolic link')
@@ -256,7 +259,7 @@ def install(application, state, service=True):
         (state / name).mkdir(parents=True, exist_ok=True)
     own_tree(application, user)
     own_tree(state, user)
-    for name in ['start.sh', 'stop.sh', 'server-install.sh']:
+    for name in ['start.sh', 'stop.sh']:
         os.chmod(application / name, 0o755)
     os.chmod(marker, 0o644)
     print('\n  [3/5] Node.js build runtime\n', flush=True)
@@ -298,7 +301,7 @@ def main():
     parser.add_argument('--no-service', action='store_true')
     arguments = parser.parse_args()
     if platform.system() != 'Linux' or os.geteuid() != 0:
-        parser.error('Run server-install.sh on Linux with administrator access')
+        parser.error('Run start.sh --server-install on Linux with administrator access')
     try:
         install(arguments.install_dir, arguments.data_dir, not arguments.no_service)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:

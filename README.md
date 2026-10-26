@@ -64,10 +64,10 @@ Stop a foreground launch with **Ctrl+C**, or run `./stop.sh` from another termin
 From a trusted copy of this project, run:
 
 ```bash
-./server-install.sh
+./start.sh --server-install
 ```
 
-Or choose option 2 in `./start.sh`. The direct equivalent is `./start.sh --server-install`. Administrator access is required; the script uses sudo when invoked by a regular user.
+Or choose option 2 in `./start.sh`; the same launcher handles installation and ordinary startup. Administrator access is required; the script uses sudo when invoked by a regular user.
 
 Use a current 64-bit Linux installation: Debian 12+, Ubuntu 24.04+, Raspberry Pi OS 64-bit Bookworm or newer, or a current Fedora/Arch system. Automatic system dependency setup supports apt, dnf and pacman. Python 3.11+ with venv must be available from the distribution. No third-party Python repository is added. Native Windows and macOS use the ordinary launcher instead; WSL2 can use Linux installation, with `--no-service` if systemd is unavailable.
 
@@ -84,8 +84,8 @@ The installer installs system prerequisites, creates the unprivileged `rootdrive
 Run from a source checkout outside the installation directory, such as `~/rootdrive`. Existing source workspace files, databases and `.env` are not copied or migrated. Existing installed configuration and data are preserved on repeat installation. Stop any ordinary RootDrive launch on the same port before installing the service; an occupied port is reported without terminating unrelated processes. Nonempty unmanaged application/data directories and existing unmanaged units are rejected. The installer stops its managed service during repeat setup; if setup fails, fix the reported issue and rerun it. Migration to different application/data paths must be handled explicitly.
 
 ```bash
-./server-install.sh --install-dir /opt/rootdrive --data-dir /var/lib/rootdrive
-./server-install.sh --no-service
+./start.sh --server-install --install-dir /opt/rootdrive --data-dir /var/lib/rootdrive
+./start.sh --server-install --no-service
 ```
 
 `--no-service` installs without systemd or automatic startup. Run the printed Python command as the `rootdrive` account. A normal installation enables startup at boot, verifies the application's health endpoint and exposes these controls:
@@ -191,7 +191,7 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 ```
 
-Save it as `/etc/systemd/system/rootdrive.service` and run `sudo systemctl enable --now rootdrive`. Create the service user and give it access to the project and storage first. This is a manual alternative. `server-install.sh` creates and manages a unit automatically.
+Save it as `/etc/systemd/system/rootdrive.service` and run `sudo systemctl enable --now rootdrive`. Create the service user and give it access to the project and storage first. This is a manual alternative. `start.sh --server-install` creates and manages a unit automatically.
 
 ## Configuration
 

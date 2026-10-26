@@ -1318,3 +1318,36 @@ body, .sidebar, .topbar, .settings-section, .storage-part {
 }
 
 .selection-bar { box-shadow: none; }
+
+.surface-action {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.surface-action:hover, .surface-action:active { background: transparent; }
+.surface-action:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
+.file-card .favorite-toggle,
+.file-card .selection-check,
+.file-card .card-more { z-index: 2; }
+.file-card .tag-pill,
+.file-card .trash-actions button { position: relative; z-index: 2; }
+.storage-part { position: relative; transition: transform var(--dur-short) var(--ease-ui), border-color var(--dur-micro) ease-out, background-color var(--dur-micro) ease-out; }
+.storage-part:has(> .surface-action) { cursor: pointer; }
+.storage-link-indicator { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 22px; height: 30px; color: var(--muted); }
+.storage-part .storage-artwork { transition: transform var(--dur-short) var(--ease-ui); }
+@media (hover: hover) and (pointer: fine) {
+  .storage-part:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+  .storage-part:hover .storage-artwork { transform: translateY(-2px) rotate(-3deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .storage-part, .storage-part .storage-artwork { transition: none !important; }
+  .storage-part:hover, .storage-part:hover .storage-artwork { transform: none; }
+}

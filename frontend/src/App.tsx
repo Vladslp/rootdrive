@@ -65,6 +65,7 @@ import { Art, kindOf } from "./components/Art";
 import { canEdit, editorKind } from "./services/editor";
 import { StorageArtwork } from "./components/StorageArtwork";
 import { FileArtwork } from "./components/FileArtwork";
+import { SurfaceAction } from "./components/SurfaceAction";
 import { Dialog } from "./components/Dialog";
 import {
   MoveDialog,
@@ -997,21 +998,14 @@ export default function App() {
                         });
                       }}
                     >
+                      <SurfaceAction
+                        label={"Open " + entry.name}
+                        activate={() => view === "trash" ? chooseAction("properties", [entry]) : open(entry)}
+                      />
                       <div className="card-art">
-                        <button
-                          className="card-open"
-                          aria-label={"Open " + entry.name}
-                          onClick={() =>
-                            view === "trash"
-                              ? chooseAction("properties", [entry])
-                              : open(entry)
-                          }
-                        >
-                          <FileArtwork
-                            entry={entry}
-                            disabled={view === "trash"}
-                          />
-                        </button>
+                        <div className="card-open">
+                          <FileArtwork entry={entry} disabled={view === "trash"} />
+                        </div>
                         {selectionView && (
                           <label
                             className={
@@ -1089,17 +1083,9 @@ export default function App() {
                         </button>
                       </div>
                       <div className="card-info">
-                        <button
-                          className="file-name"
-                          title={entry.name}
-                          onClick={() =>
-                            view === "trash"
-                              ? chooseAction("properties", [entry])
-                              : open(entry)
-                          }
-                        >
+                        <span className="file-name" title={entry.name}>
                           {entry.name}
-                        </button>
+                        </span>
                         <div className="card-meta">
                           <span>
                             {bytes(entry.size)}
@@ -1522,7 +1508,7 @@ export default function App() {
             role="menuitem"
             onClick={() => chooseAction("rename", [contextEntry])}
           >
-            <Info size={16} />
+            <Pencil size={16} />
             Rename
           </button>
           <button
@@ -1864,13 +1850,12 @@ function Storage({
             </div>
             <strong>{bytes(part.size)}</strong>
             {part.action && (
-              <button
-                className="icon-button"
-                aria-label={"Open " + part.name}
-                onClick={() => navigate(part.action!)}
-              >
-                <ChevronRight size={18} />
-              </button>
+              <>
+                <span className="storage-link-indicator" aria-hidden="true">
+                  <ChevronRight size={18} />
+                </span>
+                <SurfaceAction label={"Open " + part.name} activate={() => navigate(part.action!)} />
+              </>
             )}
           </section>
         ))}

@@ -10,7 +10,7 @@ from app.services.security import hasher
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app(Settings(storage_path=tmp_path / 'storage', database_path=tmp_path / 'data/app.db', internal_path=tmp_path / 'internal', _env_file=None))
+    return create_app(Settings(create_default_folders=False, storage_path=tmp_path / 'storage', database_path=tmp_path / 'data/app.db', internal_path=tmp_path / 'internal', _env_file=None))
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ def test_create_file_rollback_on_database_failure(client, app, monkeypatch):
 
 
 def test_create_file_requires_login_and_csrf(tmp_path):
-    app = create_app(Settings(auth_enabled=True, storage_path=tmp_path / 'storage', database_path=tmp_path / 'data/app.db', internal_path=tmp_path / 'internal', _env_file=None))
+    app = create_app(Settings(create_default_folders=False, auth_enabled=True, storage_path=tmp_path / 'storage', database_path=tmp_path / 'data/app.db', internal_path=tmp_path / 'internal', _env_file=None))
     with app.state.db() as db:
         db.add(User(username='writer', password_hash=hasher.hash('valid-test-password'), role='user'))
         db.commit()

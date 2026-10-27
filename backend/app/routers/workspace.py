@@ -3,7 +3,6 @@ import os
 import shutil
 import time
 import uuid
-import zipfile
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -11,7 +10,8 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from ..database import ArchiveExport, Favorite, FileVersion, ItemMetadata, ItemTag, Tag
-from ..schemas import BatchInput, FavoriteInput, ItemTagsInput, TagInput
+from ..schemas import CompressInput, FileEntry, BatchInput, FavoriteInput, ItemTagsInput, TagInput
+from ..services.archives import compress_folder, write_zip
 from ..services.security import require_access
 from ..services.workspace import bulk_move, bulk_trash, enrich, install_file, item_record, normalize_paths, owner_key
 
@@ -174,20 +174,7 @@ def make_archive(body: BatchInput, request: Request, user=Depends(require_access
         target = directory / identifier
         name = (sources[0].name if len(sources) == 1 else 'RootDrive files') + '.zip'
         try:
-            with zipfile.ZipFile(target, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=1, allowZip64=True) as archive:
-                for source in sources:
-                    def members():
-                        yield source
-                        if source.is_dir():
-                            yield from fs.walk(source, True)
-                    for member in members():
-                        fs.path(fs.relative(member), allow_root=False)
-                        if member.is_dir():
-                            archive.writestr(fs.relative(member) + '/', b'')
-                        else:
-                            descriptor = os.open(member, os.O_RDONLY | os.O_NOFOLLOW)
-                            with os.fdopen(descriptor, 'rb') as original, archive.open(fs.relative(member), 'w', force_zip64=True) as output:
-                                shutil.copyfileobj(original, output, 1024 * 1024)
+            write_zip(fs, sources, target)
             db.add(ArchiveExport(id=identifier, owner=owner_key(user), name=name))
             db.commit()
         except BaseException:
@@ -195,6 +182,11 @@ def make_archive(body: BatchInput, request: Request, user=Depends(require_access
             raise
         fs.invalidate()
         return {'url': '/api/exports/' + identifier, 'name': name}
+
+
+@router.post('/files/compress', status_code=201, response_model=FileEntry)
+def save_folder_zip(body: CompressInput, request: Request, user=Depends(require_access)):
+    return compress_folder(request.app.state.fs, body.path, body.name)
 
 
 @router.get('/exports/{identifier}')

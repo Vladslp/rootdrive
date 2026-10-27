@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     storage_path: Path = ROOT / 'storage'
     database_path: Path = ROOT / 'data/rootdrive.db'
     internal_path: Path = ROOT / 'data/internal'
+    create_default_folders: bool = True
     auth_enabled: bool = False
     enable_public_shares: bool = False
     cookie_secure: bool = False

@@ -60,6 +60,7 @@ beforeEach(async () => {
     else if (url.pathname === "/api/uploads") data = { items: [] };
     else if (url.pathname === "/api/storage/stats") data = { file_count: 1, stored_bytes: 12, disk_total: 1000, disk_free: 800, disk_used: 200, disk_percent: 20, system_bytes: 188, trash_bytes: 0, versions_bytes: 0, uploads_bytes: 0, cache_bytes: 0, exports_bytes: 0, categories: { images: 12, videos: 0, documents: 0, other: 0 } };
     else if (url.pathname === "/api/files") { if (delayListing) await delayListing; data = { items: url.searchParams.get("path") ? [] : [folder, photo, ...additionalFiles], total: url.searchParams.get("path") ? 0 : 2 + additionalFiles.length }; }
+    else if (url.pathname === "/api/files/compress") data = { ...photo, name: requests.at(-1).body.name, path: requests.at(-1).body.name, mime: "application/zip" };
     else if (url.pathname === "/api/collection") data = { items: [], total: 0 };
     else if (url.pathname === "/api/trash") data = { items: [{ ...folder, id: "trash-1" }], total: 1, revision: "revision" };
     return { ok: true, json: async () => data };
@@ -214,4 +215,47 @@ test("leaving Storage does not request another disk inventory", async () => {
   const count = requests.filter(({ url }) => url.pathname === "/api/storage/stats").length;
   await click("My files");
   assert.equal(requests.filter(({ url }) => url.pathname === "/api/storage/stats").length, count);
+});
+
+
+test("Create ZIP saves a folder archive through the backend without downloading it", async () => {
+  await click("Actions for Folder");
+  const action = [...host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent.trim() === "Create ZIP");
+  assert.ok(action.querySelector("svg.lucide-folder-archive"));
+  await act(async () => action.click());
+  const dialog = host.querySelector('[role="dialog"][aria-label="Create ZIP"]');
+  assert.ok(dialog);
+  assert.equal(dialog.querySelector("input").value, "Folder.zip");
+  await act(async () => dialog.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+  const request = requests.find(({ url }) => url.pathname === "/api/files/compress");
+  assert.equal(request.method, "POST");
+  assert.deepEqual(request.body, { path: "Folder", name: "Folder.zip" });
+  assert.equal(requests.some(({ url }) => url.pathname === "/api/files/archive"), false);
+  assert.equal(host.querySelector('[role="dialog"]'), null);
+  assert.match(host.querySelector(".toast-stack").textContent, /ZIP created/);
+});
+
+test("Create ZIP is offered only for folders", async () => {
+  await click("Actions for photo.png");
+  assert.equal([...host.querySelectorAll('[role="menuitem"]')].some((node) => node.textContent.trim() === "Create ZIP"), false);
+});
+
+test("ZIP creation shows pending state and keeps errors in the dialog", async () => {
+  const originalFetch = globalThis.fetch;
+  let complete;
+  globalThis.fetch = async (url, options) => url === "/api/files/compress" ? new Promise((resolve) => { complete = resolve; }) : originalFetch(url, options);
+  await click("Actions for Folder");
+  await act(async () => [...host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent.trim() === "Create ZIP").click());
+  const dialog = host.querySelector('[role="dialog"]');
+  await act(async () => dialog.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+  assert.equal(dialog.querySelector("input").disabled, true);
+  assert.equal(button("Creating ZIP…").disabled, true);
+  assert.equal(button("Cancel").disabled, true);
+  await click("Close dialog");
+  assert.equal(host.querySelector('[role="dialog"]'), dialog);
+  await act(async () => complete({ ok: false, status: 409, json: async () => ({ error: { message: "A file with this name already exists" } }) }));
+  assert.equal(dialog.querySelector("input").disabled, false);
+  assert.match(dialog.querySelector('[role="alert"]').textContent, /already exists/);
+  await click("Cancel");
+  assert.equal(host.querySelector('[role="dialog"]'), null);
 });

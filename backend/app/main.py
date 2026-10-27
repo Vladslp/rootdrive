@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import ROOT, Settings
 from .database import ApplicationSetting, create_database
 from .routers import auth, editor, files, shares, uploads, workspace, settings as server_settings
+from .services.bootstrap import initialize_workspace
 from .services.filesystem import Filesystem
 from .services.previews import Previews
 
@@ -60,6 +61,7 @@ def create_app(settings: Settings | None = None):
     app = FastAPI(title='RootDrive', version='1.0.0', lifespan=lifespan)
     app.state.settings, app.state.db = settings, sessions
     app.state.fs = Filesystem(settings)
+    initialize_workspace(app.state.fs, sessions)
     app.state.previews = Previews(settings, app.state.fs)
     app.state.login_attempts = defaultdict(deque)
     app.add_middleware(BodyLimit, settings=settings)

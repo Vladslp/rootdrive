@@ -21,6 +21,7 @@ class Filesystem:
         self.stats_cache = None
         self.stats_time = 0.0
         self.folder_cache = {}
+        self.smart_cache = {}
 
     def name(self, value: str) -> str:
         if not value or value in {'.', '..'} or value != value.strip() or len(value.encode()) > 240:
@@ -144,6 +145,7 @@ class Filesystem:
     def invalidate(self):
         self.stats_time = 0
         self.folder_cache.clear()
+        self.smart_cache.clear()
 
     def stats(self):
         with self.lock:

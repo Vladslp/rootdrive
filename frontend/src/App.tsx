@@ -18,6 +18,8 @@ import {
   ArrowUp,
   Check,
   CheckSquare,
+  Command as CommandIcon,
+  Sparkles,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -69,6 +71,8 @@ import { StorageArtwork } from "./components/StorageArtwork";
 import { FileCard } from "./components/FileCard";
 import { SurfaceAction } from "./components/SurfaceAction";
 import { Dialog } from "./components/Dialog";
+import { CommandPalette, type Command } from "./components/CommandPalette";
+import { smartFolders, type SmartFolder, type View } from "./services/navigation";
 import { CompressDialog } from "./components/CompressDialog";
 import {
   MoveDialog,
@@ -90,14 +94,6 @@ import { droppedFiles, useUploads } from "./hooks/useUploads";
 
 const EditorDialog = lazy(() => import("./components/EditorDialog"));
 
-type View =
-  | "files"
-  | "favorites"
-  | "tag"
-  | "shares"
-  | "trash"
-  | "storage"
-  | "settings";
 type Theme = "light" | "dark";
 const pageSize = 60;
 
@@ -118,6 +114,9 @@ export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
   const [accountError, setAccountError] = useState("");
   const [view, setView] = useState<View>("files");
+  const [smartFolder, setSmartFolder] = useState<SmartFolder>("recent");
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const commandKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K";
   const [path, setPath] = useState("");
   const [activeTag, setActiveTag] = useState("");
   const [tags, setTags] = useState<Tag[]>([]);
@@ -133,8 +132,8 @@ export default function App() {
   const [revision, setRevision] = useState(0);
   const listingCache = useRef(new Map<string, { value: Listing; at: number }>());
   const cacheKey = useCallback((nextView: View, nextPath: string, nextTag: string, nextSearch: string, nextOffset: number) =>
-    JSON.stringify([nextView, nextPath, nextTag, nextSearch, recursive, sort, direction, nextOffset, revision]),
-  [recursive, sort, direction, revision]);
+    JSON.stringify([nextView, nextPath, nextTag, nextSearch, recursive, sort, direction, nextOffset, revision, nextView === "smart" ? smartFolder : ""]),
+  [recursive, sort, direction, revision, smartFolder]);
   const [listing, setListing] = useState<Listing>({ items: [], total: 0 });
   const [shares, setShares] = useState<{ items: Shared[]; total: number }>({
     items: [],
@@ -170,7 +169,7 @@ export default function App() {
   const replacePath = useRef<string | undefined>(undefined);
   const mainSearch = useRef<HTMLInputElement>(null);
   const ready = Boolean(account && (!account.auth_enabled || account.user));
-  const fileView = ["files", "favorites", "tag"].includes(view);
+  const fileView = ["files", "favorites", "tag", "smart"].includes(view);
   const selectionView = fileView || view === "trash";
   const selectionKey = (entry: Entry) => view === "trash" ? entry.id! : entry.path;
   const marquee = useMarqueeSelection({
@@ -180,12 +179,13 @@ export default function App() {
       !loading &&
       !error &&
       !modal &&
+      !commandsOpen &&
       !tagManager &&
       !tagContext &&
       !tagToDelete &&
       !context &&
       !dragging,
-    scope: `${view}:${path}:${activeTag}:${search}:${offset}:${layout}:${revision}`,
+    scope: `${view}:${path}:${activeTag}:${smartFolder}:${search}:${offset}:${layout}:${revision}`,
     selection,
     change: setSelection,
   });
@@ -290,6 +290,7 @@ export default function App() {
     });
     if (view === "favorites") params.set("favorite", "true");
     if (view === "tag") params.set("tag", activeTag);
+    if (view === "smart") params.set("kind", smartFolder);
     const endpoint =
       view === "trash"
         ? "/trash"
@@ -297,7 +298,9 @@ export default function App() {
           ? "/shares"
           : view === "files"
             ? "/files"
-            : "/collection";
+            : view === "smart"
+              ? "/smart-files"
+              : "/collection";
     api<Listing & { items: Shared[] }>(endpoint + "?" + params, "GET", undefined, controller.signal)
       .then((result) => {
         if (active) {
@@ -334,6 +337,7 @@ export default function App() {
     direction,
     offset,
     activeTag,
+    smartFolder,
     revision,
     cacheKey,
   ]);
@@ -359,7 +363,17 @@ export default function App() {
   }, [context, tagContext]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
+      if (!ready || modal || tagManager || tagToDelete) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setContext(null);
+        setTagContext(null);
+        setSidebar(false);
+        setCommandsOpen((value) => !value);
+        return;
+      }
       if (
+        commandsOpen ||
         modal ||
         tagManager ||
         tagToDelete ||
@@ -377,14 +391,6 @@ export default function App() {
         event.preventDefault();
         setSelection(listing.items.map(selectionKey));
       }
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "k" &&
-        fileView
-      ) {
-        event.preventDefault();
-        mainSearch.current?.focus();
-      }
       if (event.key === "Escape") {
         setSelection([]);
         setSidebar(false);
@@ -392,15 +398,16 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items]);
+  }, [ready, commandsOpen, modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items]);
   const navigate = useCallback((next: View, destination = "", tag = "") => {
     window.scrollTo({ top: 0, behavior: "instant" });
     const cached = next === "shares" ? undefined : listingCache.current.get(cacheKey(next, destination, tag, "", 0));
     const usable = cached && Date.now() - cached.at < 15000;
     if (usable) setListing(cached.value);
-    setLoading(Boolean(["files", "favorites", "tag", "trash", "shares"].includes(next)) && !usable);
+    setLoading(Boolean(["files", "favorites", "tag", "smart", "trash", "shares"].includes(next)) && !usable);
     setError("");
     setView(next);
+    setCommandsOpen(false);
     setPath(destination);
     setActiveTag(tag);
     setOffset(0);
@@ -411,6 +418,15 @@ export default function App() {
     setContext(null);
     setTagContext(null);
   }, [cacheKey]);
+  const navigateSmart = useCallback((id: SmartFolder) => {
+    const folder = smartFolders.find((item) => item.id === id)!;
+    setSmartFolder(id);
+    setSort(folder.sort);
+    setDirection(folder.direction);
+    navigate("smart");
+    setLoading(true);
+    if (view === "smart" && smartFolder === id) refresh();
+  }, [navigate, view, smartFolder, refresh]);
   const tagMenuProps = useCallback((tag: Tag) => {
     function show(x: number, y: number) {
       setContext(null);
@@ -514,7 +530,9 @@ export default function App() {
     restore: (entry: Entry) => void perform(() => api("/trash/restore", "POST", { id: entry.id }), "Restored"),
   }), [open, chooseAction, favorite, navigate, tagMenuProps, perform]);
   const title =
-    view === "tag"
+    view === "smart"
+      ? smartFolders.find((folder) => folder.id === smartFolder)!.label
+      : view === "tag"
       ? tags.find((tag) => tag.id === activeTag)?.name || "Tag"
       : (
           {
@@ -526,6 +544,24 @@ export default function App() {
             settings: "Settings",
           } as Record<string, string>
         )[view];
+  const commands: Command[] = [
+    { id: "files", label: "My files", icon: HardDrive, keywords: "home browse", run: () => navigate("files") },
+    ...smartFolders.map((folder) => ({ id: folder.id, label: folder.label, detail: folder.detail, icon: folder.icon, keywords: "smart folder", run: () => navigateSmart(folder.id) })),
+    { id: "favorites", label: "Favorites", icon: Star, run: () => navigate("favorites") },
+    ...(account?.shares_enabled ? [{ id: "shares", label: "Shared links", icon: Link, run: () => navigate("shares") }] : []),
+    { id: "trash", label: "Trash", icon: Trash2, run: () => navigate("trash") },
+    { id: "storage", label: "Storage", icon: HardDrive, keywords: "disk space", run: () => navigate("storage") },
+    { id: "settings", label: "Settings", icon: Settings, keywords: "preferences users", run: () => navigate("settings") },
+    { id: "newfile", label: "New file", detail: view === "files" && path ? `/${path}` : "My files", icon: FilePlus2, keywords: "create text document code", run: () => { if (view !== "files") navigate("files"); chooseAction("newfile", []); } },
+    { id: "newfolder", label: "New folder", detail: view === "files" && path ? `/${path}` : "My files", icon: FolderPlus, keywords: "create directory", run: () => { if (view !== "files") navigate("files"); chooseAction("newfolder", []); } },
+    { id: "upload", label: "Upload files", icon: Upload, keywords: "import add", run: () => { if (view !== "files") navigate("files"); chooseUpload(); } },
+    { id: "theme", label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme", icon: theme === "dark" ? Sun : Moon, keywords: "appearance", run: () => setTheme(theme === "dark" ? "light" : "dark") },
+    { id: "refresh", label: "Refresh", icon: History, keywords: "reload", run: refresh },
+    ...(selected.length === 1 && fileView ? [
+      { id: "rename", label: "Rename selected file", detail: selected[0].name, icon: Pencil, run: () => chooseAction("rename", selected) },
+      { id: "properties", label: "File properties", detail: selected[0].name, icon: Info, run: () => chooseAction("properties", selected) },
+    ] : []),
+  ];
   if (!account)
     return (
       <div className="connection-screen">
@@ -576,6 +612,7 @@ export default function App() {
             RootDrive<span className="brand-dot">.</span>
           </span>
         </button>
+        <div className="sidebar-scroll">
         <nav aria-label="Main navigation">
           {nav("files", "My files", <HardDrive size={19} />)}
           {nav("favorites", "Favorites", <Star size={19} />)}
@@ -583,6 +620,15 @@ export default function App() {
             nav("shares", "Shared links", <Link size={19} />)}
           {nav("trash", "Trash", <Trash2 size={19} />)}
         </nav>
+        <section className="sidebar-smart" aria-label="Smart folders">
+          <div className="sidebar-label"><span>Smart folders</span></div>
+          {smartFolders.map((folder) => <button key={folder.id}
+            className={"nav-link " + (view === "smart" && smartFolder === folder.id ? "active" : "")}
+            aria-current={view === "smart" && smartFolder === folder.id ? "page" : undefined}
+            title={folder.detail} onClick={() => navigateSmart(folder.id)}>
+            <folder.icon size={18} /><span>{folder.label}</span>
+          </button>)}
+        </section>
         <div className="sidebar-tags">
           <div className="sidebar-label">
             <span>Tags</span>
@@ -625,6 +671,7 @@ export default function App() {
               Manage all tags
             </button>
           )}
+        </div>
         </div>
         <div className="sidebar-bottom">
           {nav("storage", "Storage", <HardDrive size={19} />)}
@@ -708,6 +755,10 @@ export default function App() {
             </button>
           </div>
           <div className="topbar-right">
+            <button className="command-trigger" aria-label="Quick commands" title={`Quick commands (${commandKey})`}
+              onClick={() => { setCommandsOpen(true); setSidebar(false); setContext(null); setTagContext(null); }}>
+              <CommandIcon size={16} /><span>Quick commands</span><kbd>{commandKey}</kbd>
+            </button>
             <button
               className="icon-button theme-toggle"
               aria-label={
@@ -737,7 +788,7 @@ export default function App() {
             "page-content" +
             (view === "settings" ? " page-content-settings" : "")
           }
-          key={`${view}:${path}:${activeTag}`}
+          key={`${view}:${path}:${activeTag}:${smartFolder}`}
         >
           <div className={"workbench-heading" + (view === "files" ? " has-actions" : "")}><div className="page-heading">
             <div>
@@ -792,6 +843,7 @@ export default function App() {
             </div>
           )}
           </div>
+          {view === "smart" && <p className="smart-description"><Sparkles size={14} />{smartFolders.find((folder) => folder.id === smartFolder)!.detail}</p>}
           {view === "trash" && (
             <div className="trash-toolbar">
               <span className="muted">{selected.length ? `${selected.length} selected` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>
@@ -979,6 +1031,8 @@ export default function App() {
                       ? "Trash is empty"
                       : view === "favorites"
                         ? "No favorites yet"
+                        : view === "smart"
+                          ? "No matching files yet"
                         : view === "tag"
                           ? "No files with this tag"
                           : "This folder is empty"}
@@ -1014,7 +1068,7 @@ export default function App() {
                     <FileCard key={entry.id || entry.path} entry={entry}
                       selected={selection.includes(selectionKey(entry))}
                       trash={view === "trash"}
-                      showPath={view === "favorites" || view === "tag" || Boolean(recursive && search)}
+                      showPath={view === "smart" || view === "favorites" || view === "tag" || Boolean(recursive && search)}
                       busy={view === "trash" && busy} actions={cardActions} />
                   ))}
                 </div>
@@ -1273,6 +1327,7 @@ export default function App() {
           </div>
         ))}
       </div>
+      {commandsOpen && ready && <CommandPalette commands={commands} close={() => setCommandsOpen(false)} open={open} />}
       {tagContext && (
         <div
           role="menu"

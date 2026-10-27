@@ -13,6 +13,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http:
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, IS_REACT_ACT_ENVIRONMENT: true, requestAnimationFrame: (callback) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
 Object.defineProperty(globalThis, "localStorage", { value: window.localStorage, configurable: true });
 window.scrollTo = () => {};
+globalThis.ResizeObserver = class { observe() {} disconnect() {} };
 window.setInterval = (...args) => { const timer = setInterval(...args); timer.unref(); return timer; };
 window.setTimeout = (...args) => { const timer = setTimeout(...args); timer.unref(); return timer; };
 const require = createRequire(import.meta.url);
@@ -61,6 +62,8 @@ beforeEach(async () => {
     else if (url.pathname === "/api/storage/stats") data = { file_count: 1, stored_bytes: 12, disk_total: 1000, disk_free: 800, disk_used: 200, disk_percent: 20, system_bytes: 188, trash_bytes: 0, versions_bytes: 0, uploads_bytes: 0, cache_bytes: 0, exports_bytes: 0, categories: { images: 12, videos: 0, documents: 0, other: 0 } };
     else if (url.pathname === "/api/files") { if (delayListing) await delayListing; data = { items: url.searchParams.get("path") ? [] : [folder, photo, ...additionalFiles], total: url.searchParams.get("path") ? 0 : 2 + additionalFiles.length }; }
     else if (url.pathname === "/api/files/compress") data = { ...photo, name: requests.at(-1).body.name, path: requests.at(-1).body.name, mime: "application/zip" };
+    else if (url.pathname === "/api/smart-files") data = { items: [photo], total: 1 };
+    else if (url.pathname === "/api/search") data = { items: [{ ...photo, path: "Nested/photo.png" }], total: 1 };
     else if (url.pathname === "/api/collection") data = { items: [], total: 0 };
     else if (url.pathname === "/api/trash") data = { items: [{ ...folder, id: "trash-1" }], total: 1, revision: "revision" };
     return { ok: true, json: async () => data };
@@ -258,4 +261,154 @@ test("ZIP creation shows pending state and keeps errors in the dialog", async ()
   assert.match(dialog.querySelector('[role="alert"]').textContent, /already exists/);
   await click("Cancel");
   assert.equal(host.querySelector('[role="dialog"]'), null);
+});
+
+async function typeIn(input, value) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(input, value);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+}
+async function keyOn(target, key, modifiers = {}) {
+  await act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers })));
+}
+async function waitForSearch() { await act(async () => new Promise((resolve) => setTimeout(resolve, 230))); }
+const commandInput = () => host.querySelector('input[aria-label="Search commands and files"]');
+
+for (const [label, kind, sort, direction] of [["Recent files", "recent", "modified", "desc"], ["All photos", "photos", "name", "asc"], ["Documents", "documents", "name", "asc"], ["Large files", "large", "size", "desc"]]) {
+  test(`${label} is a virtual collection with its own default sort`, async () => {
+    await click(label);
+    assert.equal(heading(), label);
+    const request = requests.findLast(({ url }) => url.pathname === "/api/smart-files");
+    assert.equal(request.url.searchParams.get("kind"), kind);
+    assert.equal(request.url.searchParams.get("sort"), sort);
+    assert.equal(request.url.searchParams.get("direction"), direction);
+    assert.ok(host.querySelector(".entry-path"));
+    assert.equal(host.querySelector(".file-actions"), null);
+    assert.equal(host.querySelector(".loading-area"), null);
+    await click(label);
+    assert.equal(host.querySelector(".loading-area"), null);
+  });
+}
+
+test("smart folders preserve file selection and real actions", async () => {
+  await click("All photos");
+  await act(async () => host.querySelector('input[aria-label="Select photo.png"]').click());
+  assert.match(host.querySelector(".selection-bar").textContent, /1 selected/);
+  await click("Actions for photo.png");
+  await act(async () => [...host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent.trim() === "Rename").click());
+  assert.equal(host.querySelector('[role="dialog"]').getAttribute("aria-label"), "Rename");
+});
+
+for (const modifier of ["metaKey", "ctrlKey"]) {
+  test(`${modifier} K opens quick commands from Settings and Escape restores focus`, async () => {
+    await click("Settings");
+    button("Quick commands").focus();
+    await keyOn(window, "k", { [modifier]: true });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+    assert.ok(commandInput());
+    assert.equal(document.activeElement, commandInput());
+    assert.equal(host.querySelectorAll('[role="listbox"]').length, 1);
+    await keyOn(commandInput(), "Escape");
+    assert.equal(host.querySelector('[role="dialog"]'), null);
+    assert.equal(document.activeElement, button("Quick commands"));
+  });
+}
+
+test("quick commands filter actions and support arrow navigation and Enter", async () => {
+  await click("Quick commands");
+  const input = commandInput();
+  await typeIn(input, "smart");
+  assert.equal(host.querySelectorAll('[role="option"]').length, 4);
+  await keyOn(input, "ArrowDown");
+  assert.match(host.querySelector('[role="option"][aria-selected="true"]').textContent, /All photos/);
+  assert.equal(input.getAttribute("aria-activedescendant"), host.querySelector('[aria-selected="true"]').id);
+  await keyOn(input, "Enter");
+  assert.equal(host.querySelector('[role="dialog"]'), null);
+  assert.equal(heading(), "All photos");
+});
+
+test("quick commands search files recursively only after typing and open the result", async () => {
+  await click("Storage");
+  await click("Quick commands");
+  assert.equal(requests.some(({ url }) => url.pathname === "/api/search"), false);
+  await typeIn(commandInput(), "photo");
+  assert.ok(host.querySelector('[aria-label="Searching files"]'));
+  await waitForSearch();
+  const request = requests.find(({ url }) => url.pathname === "/api/search");
+  assert.equal(request.url.searchParams.get("q"), "photo");
+  assert.equal(request.url.searchParams.get("recursive"), "true");
+  assert.equal(request.url.searchParams.get("limit"), "8");
+  const result = host.querySelector(".command-file");
+  assert.match(result.textContent, /Nested\/photo.png/);
+  await act(async () => result.click());
+  assert.equal(host.querySelector('[role="dialog"]').getAttribute("aria-label"), "photo.png");
+  assert.equal(host.querySelector(".command-palette"), null);
+});
+
+test("quick commands abort obsolete searches and never show stale file results", async () => {
+  const originalFetch = globalThis.fetch;
+  const pending = [];
+  globalThis.fetch = (url, options) => String(url).startsWith("/api/search?") ? new Promise((resolve) => pending.push({ resolve, signal: options.signal, url })) : originalFetch(url, options);
+  await click("Quick commands");
+  await typeIn(commandInput(), "first");
+  await waitForSearch();
+  await typeIn(commandInput(), "second");
+  assert.equal(pending[0].signal.aborted, true);
+  await waitForSearch();
+  await act(async () => pending[1].resolve({ ok: true, json: async () => ({ items: [{ ...photo, name: "second.png", path: "second.png" }] }) }));
+  await act(async () => pending[0].resolve({ ok: true, json: async () => ({ items: [{ ...photo, name: "first.png", path: "first.png" }] }) }));
+  assert.match(host.querySelector(".command-file").textContent, /second.png/);
+  assert.doesNotMatch(host.querySelector(".command-results").textContent, /first.png/);
+});
+
+test("quick command search errors can be retried", async () => {
+  const originalFetch = globalThis.fetch;
+  let failed = false;
+  globalThis.fetch = async (url, options) => {
+    if (String(url).startsWith("/api/search?") && !failed) {
+      failed = true;
+      return { ok: false, status: 503, json: async () => ({ error: { message: "Storage unavailable" } }) };
+    }
+    return originalFetch(url, options);
+  };
+  await click("Quick commands");
+  await typeIn(commandInput(), "photo");
+  await waitForSearch();
+  assert.match(host.querySelector('[role="status"]').textContent, /Storage unavailable/);
+  await click("Try again");
+  await waitForSearch();
+  assert.ok(host.querySelector(".command-file"));
+});
+
+test("creation commands use the current folder and root from a smart folder", async () => {
+  await click("Open Folder");
+  await click("Quick commands");
+  await typeIn(commandInput(), "new folder");
+  await keyOn(commandInput(), "Enter");
+  assert.equal(host.querySelector('[role="dialog"]').getAttribute("aria-label"), "New folder");
+  const name = host.querySelector('[role="dialog"] input');
+  await typeIn(name, "Child");
+  await act(async () => host.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+  assert.deepEqual(requests.findLast(({ url }) => url.pathname === "/api/folders").body, { path: "Folder", name: "Child" });
+  await click("All photos");
+  await click("Quick commands");
+  await typeIn(commandInput(), "new folder");
+  await keyOn(commandInput(), "Enter");
+  await typeIn(host.querySelector('[role="dialog"] input'), "Root child");
+  await act(async () => host.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+  assert.deepEqual(requests.findLast(({ url }) => url.pathname === "/api/folders").body, { path: "", name: "Root child" });
+  assert.equal(heading(), "My files");
+});
+
+test("quick commands can change theme and stay out of active editor dialogs", async () => {
+  const previous = document.documentElement.dataset.theme;
+  await click("Quick commands");
+  await typeIn(commandInput(), "theme");
+  await keyOn(commandInput(), "Enter");
+  assert.notEqual(document.documentElement.dataset.theme, previous);
+  await click("New file");
+  await keyOn(window, "k", { metaKey: true });
+  assert.equal(host.querySelector(".command-palette"), null);
+  assert.equal(host.querySelectorAll('[role="dialog"]').length, 1);
 });

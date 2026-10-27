@@ -2,6 +2,7 @@ import os
 import shutil
 import uuid
 from pathlib import Path
+from typing import Literal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import select
 from pydantic import BaseModel, Field
@@ -11,6 +12,7 @@ from ..services.creation import create_file_contents
 from ..services.security import require_access
 from ..services.metadata import image_metadata
 from ..services.workspace import install_file, enrich, owner_key, relocate_metadata, trash_metadata, restore_metadata
+from ..services.smart import smart_listing
 from ..services.trash import purge_items, trash_revision
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
@@ -22,6 +24,15 @@ def list_files(request: Request, path: str = '', q: str = '', recursive: bool = 
     fs = request.app.state.fs
     with fs.lock, request.app.state.db() as db:
         listing = fs.listing(path, q, recursive, sort, direction, offset, limit)
+        enrich(db, listing['items'], owner_key(user))
+        return listing
+
+
+@router.get('/smart-files', response_model=FileListing)
+def list_smart_files(request: Request, kind: Literal['recent', 'photos', 'documents', 'large'], q: str = Query('', max_length=240), sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200), user=Depends(require_access)):
+    fs = request.app.state.fs
+    with fs.lock, request.app.state.db() as db:
+        listing = smart_listing(fs, kind, q, sort, direction, offset, limit)
         enrich(db, listing['items'], owner_key(user))
         return listing
 

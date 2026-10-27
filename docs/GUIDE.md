@@ -319,6 +319,25 @@ Old binary Office formats, XLSX, PPTX, rich-text RTF, video/audio editing, OCR, 
 
 Trash supports the same desktop selection rectangle and mobile checkboxes as My files, using unique trash IDs so repeated deletions of the same path remain distinct. The toolbar switches to **Remove selected** when files are selected; otherwise **Remove all** clears every page of Trash and associated saved versions after explicit confirmation. The confirmation uses a revision of the complete trash listing; if items were added or restored, the server returns HTTP 409 and requires a refreshed confirmation. Trash payloads and version files are staged outside storage before the metadata transaction. A database or staging failure rolls back staged files. Irreversible removal only follows a successful commit. Active files are unaffected.
 
+## Smart folders and quick commands
+
+**Smart folders** are virtual views across the shared workspace. They do not create directories, duplicate files or move the originals. File actions affect the file at its displayed path. Search, sorting, pagination, selection, favorites, tags and previews work as in My files.
+
+| Smart folder | Rule | Default order |
+| --- | --- | --- |
+| Recent files | Modified in the last seven days | Newest first |
+| All photos | Common image formats, including HEIC/HEIF, AVIF and common camera RAW extensions | Name |
+| Documents | Text, Markdown, PDF, Office, OpenDocument, CSV, EPUB and Apple document formats | Name |
+| Large files | At least 100 MiB, displayed as 100 MB in the interface | Largest first |
+
+Photo classification uses the filename extension; it does not promise a preview/editor for every camera RAW format. Recent files use filesystem modification time, not upload or creation time. These four rules are built in; custom saved rules are not included.
+
+`GET /api/smart-files?kind=recent|photos|documents|large` uses the same authentication and storage restrictions as ordinary listings. It supports `q`, `sort`, `direction`, `offset` and `limit` (up to 200). Files in Trash, internal directories, symlinks and `.DS_Store` are excluded. Scans read filesystem metadata only and keep a bounded sorted page in memory. At most twelve raw result pages are cached for fifteen seconds; application writes invalidate them. Favorites and tags are enriched for the current user after reading the cache. External filesystem edits can take up to fifteen seconds to appear. Initial scans remain proportional to the tree size; no background indexer or polling loop is added.
+
+Open **Quick commands** from the top bar or press **Cmd+K / Ctrl+K** outside an editor/dialog. Type to filter commands or search filenames across all folders. File searches start at two characters, are debounced and return at most eight results; obsolete requests are aborted. No file-search request runs while the panel is closed or its input is empty. Use Up/Down and Enter, or click/tap a result. Escape closes the panel and returns focus to its trigger. The panel is also available on mobile through its top-bar icon.
+
+Commands open normal views, create a file/folder, upload files, refresh or switch theme. Creation and upload target the current physical directory; from a virtual view or Settings they target My files. A single selected file/folder also exposes Rename and Properties. Existing dialogs and backend validations perform the actual operations. There are no quick commands for permanent deletion.
+
 ## Folder details
 
 Folder cards, list rows and properties show recursive file size and immediate item count. Empty folders use a matching ImageGen icon atlas without paper sheets. A folder containing a subfolder is considered occupied even when its total size is zero. Symlinks and `.DS_Store` are excluded. Folder totals are cached for 30 seconds and invalidated by application writes; external filesystem edits can take up to 30 seconds to appear. The first scan of a large tree can take time; only filesystem metadata is read, never file contents. Ordinary name-sorted listings calculate details for the returned page; sorting by size calculates totals for candidate folders.

@@ -4,7 +4,7 @@ Keep your files on your own computer. Open them from any browser.
 
 No cloud account. No subscription. No Docker.
 
-**[Start](#start-here) · [Update: Zip 1](docs/UPDATES.md#update-zip-1) · [Full guide](docs/GUIDE.md)**
+**[Start](#start-here) · [Update 1.2](docs/UPDATES.md) · [Full guide](docs/GUIDE.md)**
 
 ## Your files
 
@@ -14,6 +14,16 @@ Upload, search, move and download. Keep folders, favorites and tags in one place
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/files-dark.png">
   <img alt="RootDrive file manager with folders, favorites and colored tags" src="docs/screenshots/files-light.png" width="1440">
 </picture>
+
+## Find it faster
+
+Smart folders collect recent files, photos, documents and files of 100 MB or more from across your workspace.
+
+![Smart folders show documents from every folder](docs/screenshots/smart-folders.png)
+
+Press **⌘K / Ctrl+K** to find a file, jump to a section or run a command.
+
+![Quick commands in the dark theme](docs/screenshots/quick-commands.png)
 
 ## Start here
 

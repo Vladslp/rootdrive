@@ -1,3 +1,22 @@
+# Update 1.2: Smart folders && quick commands
+
+October 29, 2026
+
+- **Smart folders:** Recent files, All photos, Documents and Large files. Automatic views across every folder, with originals kept in place.
+- **Quick commands:** Cmd+K / Ctrl+K, or the top-bar button. Find files, jump between views, create files/folders, upload and switch theme.
+- **Keyboard and mobile:** arrow-key navigation, Enter, Escape and touch-friendly controls.
+- **Lightweight:** bounded result caching, debounced search and cancellation of obsolete requests. No new dependencies or background polling.
+
+![Smart folders](screenshots/smart-folders.png)
+
+![Quick commands](screenshots/quick-commands.png)
+
+Restart RootDrive after updating. Normal startup rebuilds the frontend when needed.
+
+Validation: **224 backend tests**, **64 frontend tests**, and a successful TypeScript/Vite production build. Desktop and mobile layouts checked in the browser.
+
+---
+
 # Updates
 
 ## Update: Zip 1

@@ -11,7 +11,7 @@ from app.services.security import hasher
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app(Settings(storage_path=tmp_path / 'storage', database_path=tmp_path / 'metadata/database.db', internal_path=tmp_path / 'internal', _env_file=None))
+    return create_app(Settings(create_default_folders=False, storage_path=tmp_path / 'storage', database_path=tmp_path / 'metadata/database.db', internal_path=tmp_path / 'internal', _env_file=None))
 
 
 @pytest.fixture
@@ -226,4 +226,4 @@ def test_persistence(app):
 
 def test_storage_cannot_contain_secrets(tmp_path):
     with pytest.raises(ValueError):
-        create_app(Settings(storage_path=tmp_path, database_path=tmp_path / 'private.db', internal_path=tmp_path / 'internal', _env_file=None))
+        create_app(Settings(create_default_folders=False, storage_path=tmp_path, database_path=tmp_path / 'private.db', internal_path=tmp_path / 'internal', _env_file=None))

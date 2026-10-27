@@ -25,6 +25,10 @@ class PathInput(BaseModel):
     path: str
 
 
+class CompressInput(PathInput):
+    name: str | None = Field(default=None, min_length=1, max_length=240)
+
+
 class TrashInput(BaseModel):
     id: str
 

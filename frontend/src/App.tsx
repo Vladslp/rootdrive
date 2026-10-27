@@ -23,6 +23,7 @@ import {
   CircleHelp,
   Download,
   FolderInput,
+  FolderArchive,
   FilePlus2,
   FolderPlus,
   HardDrive,
@@ -68,6 +69,7 @@ import { StorageArtwork } from "./components/StorageArtwork";
 import { FileCard } from "./components/FileCard";
 import { SurfaceAction } from "./components/SurfaceAction";
 import { Dialog } from "./components/Dialog";
+import { CompressDialog } from "./components/CompressDialog";
 import {
   MoveDialog,
   NameDialog,
@@ -1343,6 +1345,12 @@ export default function App() {
             <Download size={16} />
             {contextEntry.type === "folder" ? "Download ZIP" : "Download"}
           </button>
+          {contextEntry.type === "folder" && (
+            <button role="menuitem" onClick={() => chooseAction("compress", [contextEntry])}>
+              <FolderArchive size={16} />
+              Create ZIP
+            </button>
+          )}
           <button
             role="menuitem"
             onClick={() => {
@@ -1410,6 +1418,12 @@ export default function App() {
             Move to trash
           </button>
         </div>
+      )}
+      {modal?.action === "compress" && (
+        <CompressDialog entry={modal.entries[0]} close={() => setModal(null)} created={(entry) => {
+          done("ZIP created");
+          navigate("files", entry.path.split("/").slice(0, -1).join("/"));
+        }} />
       )}
       {modal?.action === "newfile" && (
         <NewFileDialog

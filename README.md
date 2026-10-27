@@ -4,7 +4,7 @@ Keep your files on your own computer. Open them from any browser.
 
 No cloud account. No subscription. No Docker.
 
-**[Start](#start-here) · [Full guide](docs/GUIDE.md)**
+**[Start](#start-here) · [Update: Zip 1](docs/UPDATES.md#update-zip-1) · [Full guide](docs/GUIDE.md)**
 
 ## Your files
 
@@ -40,6 +40,14 @@ Crop, rotate and adjust images. Basic document editing and PDF tools are include
 
 ![Image editing inside RootDrive](docs/screenshots/image-editor.png)
 
+## Create ZIPs
+
+Right-click a folder → **Create ZIP**. Save the archive beside the folder.
+
+<p align="center">
+  <img src="docs/screenshots/create-zip.png" alt="Create ZIP dialog with an editable archive name" width="620">
+</p>
+
 ## Create something new
 
 Start a note, a document or a code file without leaving the panel.
@@ -65,7 +73,7 @@ Files, trash, versions, system usage and free space — all together.
 
 ## A little more
 
-- Files stay in `storage/` during a local installation.
+- Files stay in `storage/` during a local installation. Documents, Photos, Videos and Audio are created once on first launch.
 - Login and public links are optional and off by default. Users share one workspace.
 - Public links let anyone with the link download the file.
 - For LAN access, set `HOST=0.0.0.0` in `.env` and restart.

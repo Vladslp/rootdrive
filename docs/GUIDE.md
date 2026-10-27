@@ -12,7 +12,7 @@ Created as a university Python semester project. The implementation demonstrates
 - Multiple files and folder uploads with hierarchy, drag and drop, per-file progress and configurable limits.
 - Persistent chunked uploads with pause/resume, reconnect retries and reselecting originals after a page reload.
 - Favorites, colored tags, tag filtering and custom folder colors.
-- Page selection and bulk move, trash or ZIP download; individual folders download as ZIP.
+- Page selection and bulk move, trash or ZIP download; individual folders download as ZIP. Create ZIP also saves a folder archive inside the workspace.
 - Version history on explicit replacement, previous-version downloads and safe restoration.
 - Native browser audio/video playback with HTTP byte ranges.
 - Download, create folder, rename, move and delete to trash.
@@ -29,7 +29,7 @@ Created as a university Python semester project. The implementation demonstrates
 
 Finder `.DS_Store` metadata is hidden from file listings and file totals.
 
-Nothing is uploaded to a third-party service. Runtime does not load fonts, scripts or images from a CDN. The initial workspace is empty; no example files are silently installed.
+Nothing is uploaded to a third-party service. Runtime does not load fonts, scripts or images from a CDN. On first launch, Documents, Photos, Videos and Audio are created in the workspace. No example files are installed. Existing names are preserved, and the folders are not recreated after being renamed or deleted. This setup state is stored in SQLite for each configured storage path. Set `CREATE_DEFAULT_FOLDERS=false` to start without them.
 
 ## Requirements
 
@@ -206,6 +206,7 @@ Copy `.env.example` to `.env`. Relative paths are resolved from the project dire
 | `STORAGE_PATH` | `./storage` | Browsable user files |
 | `DATABASE_PATH` | `./data/rootdrive.db` | SQLite metadata |
 | `INTERNAL_PATH` | `./data/internal` | Trash, versions, upload staging, preview cache and ZIP exports |
+| `CREATE_DEFAULT_FOLDERS` | `true` | Create the four starter folders once per configured workspace |
 | `AUTH_ENABLED` | `false` | Require login |
 | `ENABLE_PUBLIC_SHARES` | `false` | Enable anonymous file download links |
 | `COOKIE_SECURE` | `false` | Restrict session cookies to HTTPS when true |
@@ -214,7 +215,7 @@ Copy `.env.example` to `.env`. Relative paths are resolved from the project dire
 | `MAX_PREVIEW_PIXELS` | `50000000` | Maximum decoded photo size for thumbnails/previews |
 | `PREVIEW_CACHE_SIZE_MB` | `512` | Derived JPEG preview cache limit |
 
-Storage must not contain application code, the database, `.env` or the internal directories. Keep `STORAGE_PATH` and `INTERNAL_PATH` on the **same filesystem** for rename-based trash operations. For an external disk, use sibling paths such as `/mnt/drive/files` and `/mnt/drive/rootdrive-internal`. The database can remain on the host disk.
+Storage must not contain application code, the database, `.env` or the internal directories. Keep `STORAGE_PATH` and `INTERNAL_PATH` on the **same filesystem** for rename-based trash operations and atomic ZIP publication. For an external disk, use sibling paths such as `/mnt/drive/files` and `/mnt/drive/rootdrive-internal`. The database can remain on the host disk.
 
 ## Upload limit in Settings
 
@@ -274,6 +275,12 @@ Favorites belong to the signed-in account, or to the shared workspace when sign-
 Storage scans use streaming directory iteration and a 30-second cache. File mutations invalidate the cache. The dashboard separates active files, Trash, Versions, Temporary (unfinished uploads, preview cache and generated ZIPs), System and free disk space. **System** is the remaining used disk space after RootDrive's file and internal-data totals are subtracted, and includes the OS, apps and other files. File sizes are logical bytes; filesystem compression, sparse files, clones and APFS accounting can make this an estimate of physical allocation. Keep storage and internal data on the same filesystem for meaningful disk comparisons and rename-based operations.
 
 A crash or power failure can leave an unfinished filesystem/metadata transition. Resumable uploads truncate any unacknowledged tail to their recorded offset on the next chunk. Missing or damaged staging requires cancelling and restarting that upload. Inspect orphaned data with the server stopped. Back up storage, the SQLite database and internal data together while the server is stopped for a consistent snapshot.
+
+## Save a folder as ZIP
+
+Right-click a folder or open its action menu, then choose **Create ZIP**. Edit the archive name and confirm. RootDrive saves `Folder.zip` beside `Folder`; it does not start a browser download or remove the source. Use **Download ZIP** for the existing temporary download workflow instead.
+
+`POST /api/files/compress` accepts `path` and an optional `name`. It rejects root paths, files, symlink roots, unsafe names and destination conflicts. ZIPs contain the selected folder, nested files and empty directories; symlinks and `.DS_Store` are excluded. Nested folder archives start with the selected folder name rather than unrelated workspace ancestors. File contents stream in 1 MiB chunks, with ZIP64 and fast level-one compression. A completed archive is published using an exclusive hard link from internal staging, so incomplete archives are not listed and existing files are not overwritten. Failed operations remove their staging files. Storage and internal data must share a filesystem. Compression is synchronous under the workspace lock; very large folders can delay other workspace requests while it runs.
 
 ## Photo previews and EXIF
 
@@ -362,6 +369,8 @@ backend/app/
     editor.py           Typed editor requests, revisions and validated saves
   services/
     filesystem.py       Path validation, listing, streaming downloads and statistics
+    bootstrap.py        One-time default folders and persistent workspace setup state
+    archives.py         Streamed ZIP writing and safe in-workspace publication
     security.py         Argon2 verification, session lookup and CSRF enforcement
     previews.py         Bounded photo conversion and derived thumbnail cache
     metadata.py         Read-only EXIF extraction and display formatting
@@ -415,6 +424,7 @@ All private endpoints require a session when authentication is enabled. State-ch
 | POST | `/api/files/tags` | Assign tags and an optional folder color |
 | POST | `/api/files/batch/move` | Move selected paths |
 | POST | `/api/files/batch/trash` | Trash selected paths |
+| POST | `/api/files/compress` | Save one folder as a ZIP beside the source |
 | POST | `/api/files/archive` | Create ZIP for selected paths |
 | GET | `/api/exports/{id}` | Download own unexpired ZIP |
 | GET | `/api/files/versions?path=...` | List previous versions |

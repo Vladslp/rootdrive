@@ -19,7 +19,7 @@ Validation: **224 backend tests**, **64 frontend tests**, and a successful TypeS
 
 # Updates
 
-## Update: Zip 1
+## Update 1.1
 
 October 27, 2026
 

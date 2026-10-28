@@ -379,7 +379,7 @@ export default function App() {
         tagToDelete ||
         tagContext ||
         (event.target as HTMLElement)?.closest(
-          "input,textarea,select,[contenteditable]",
+          "input:not([type=checkbox]),textarea,select,[contenteditable],.cm-editor",
         )
       )
         return;
@@ -391,6 +391,16 @@ export default function App() {
         event.preventDefault();
         setSelection(listing.items.map(selectionKey));
       }
+      if (!event.repeat && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && !busy && !loading && !context && fileView) {
+        if (event.key === "F2" && selected.length === 1) {
+          event.preventDefault();
+          setModal({ action: "rename", entries: selected });
+        }
+        if (event.key === "Delete" && selected.length) {
+          event.preventDefault();
+          setModal({ action: "delete", entries: selected });
+        }
+      }
       if (event.key === "Escape") {
         setSelection([]);
         setSidebar(false);
@@ -398,7 +408,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [ready, commandsOpen, modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items]);
+  }, [ready, commandsOpen, modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items, selected, busy, loading, context]);
   const navigate = useCallback((next: View, destination = "", tag = "") => {
     window.scrollTo({ top: 0, behavior: "instant" });
     const cached = next === "shares" ? undefined : listingCache.current.get(cacheKey(next, destination, tag, "", 0));

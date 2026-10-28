@@ -1,3 +1,9 @@
+# Update 1.3: HotKeys update
+
+Use **F2** to rename one selected file or folder and **Delete** to open the Move to Trash confirmation. Shortcuts stay inactive while typing, in dialogs, during pending actions and in Trash; repeated key events do not repeat actions.
+
+---
+
 # Update 1.2: Smart folders && quick commands
 
 October 29, 2026

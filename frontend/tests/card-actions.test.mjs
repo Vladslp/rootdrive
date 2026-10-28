@@ -412,3 +412,30 @@ test("quick commands can change theme and stay out of active editor dialogs", as
   assert.equal(host.querySelector(".command-palette"), null);
   assert.equal(host.querySelectorAll('[role="dialog"]').length, 1);
 });
+
+test("F2 renames one selected item and Delete asks before moving files to Trash", async () => {
+  const checkbox = host.querySelector('input[aria-label="Select Folder"]');
+  await act(async () => checkbox.click());
+  await keyOn(checkbox, "F2");
+  assert.equal(host.querySelector('[role="dialog"]').getAttribute("aria-label"), "Rename");
+  await click("Close dialog");
+  await keyOn(checkbox, "Delete");
+  assert.ok(host.querySelector('[role="dialog"]'));
+  assert.match(host.querySelector('[role="dialog"]').textContent, /trash/i);
+  assert.equal(requests.some(({ method }) => method === "DELETE"), false);
+});
+
+test("file shortcuts ignore text entry, repeated events and multi-selection rename", async () => {
+  await act(async () => host.querySelector('input[aria-label="Select Folder"]').click());
+  await keyOn(host.querySelector('input[aria-label="Search files"]'), "Delete");
+  assert.equal(host.querySelector('[role="dialog"]'), null);
+  await keyOn(window, "F2", { repeat: true });
+  assert.equal(host.querySelector('[role="dialog"]'), null);
+  await act(async () => host.querySelector('input[aria-label="Select photo.png"]').click());
+  await keyOn(window, "F2");
+  assert.equal(host.querySelector('[role="dialog"]'), null);
+  await click("Trash");
+  await act(async () => host.querySelector('input[aria-label="Select Folder"]').click());
+  await keyOn(window, "Delete");
+  assert.equal(host.querySelector('[role="dialog"]'), null);
+});

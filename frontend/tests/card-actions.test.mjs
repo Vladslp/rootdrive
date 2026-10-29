@@ -549,3 +549,18 @@ test("Trash restores its selected IDs through the bulk endpoint", async () => {
   assert.deepEqual(request.body, { ids: ["trash-1"] });
   assert.match(host.querySelector(".toast-stack").textContent, /Restored selected/);
 });
+
+test("Trash search and sorting reach the backend and disable Remove all while filtering", async () => {
+  await click("Trash");
+  await typeIn(host.querySelector('input[aria-label="Search Trash"]'), "Folder");
+  assert.equal(button("Remove all").disabled, true);
+  await waitForSearch();
+  await act(async () => {
+    const select = host.querySelector('select[aria-label="Sort Trash"]');
+    select.value = "size";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const request = requests.findLast(({ url }) => url.pathname === "/api/trash");
+  assert.equal(request.url.searchParams.get("q"), "Folder");
+  assert.equal(request.url.searchParams.get("sort"), "size");
+});

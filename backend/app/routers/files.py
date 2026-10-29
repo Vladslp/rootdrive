@@ -209,12 +209,14 @@ def delete_file(body: PathInput, request: Request):
 
 
 @router.get('/trash')
-def list_trash(request: Request, offset: int = Query(0, ge=0), limit: int = Query(80, ge=1, le=200)):
+def list_trash(request: Request, q: str = Query('', max_length=240), sort: str = Query('modified', pattern='^(name|size|modified)$'), direction: str = Query('desc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0), limit: int = Query(80, ge=1, le=200)):
     from sqlalchemy import func
     with request.app.state.fs.lock, request.app.state.db() as db:
-        items = db.scalars(select(TrashItem).order_by(TrashItem.deleted_at.desc()).offset(offset).limit(limit))
-        return {'items': [{'id': item.id, 'name': Path(item.original_path).name, 'path': item.original_path, 'type': item.item_type, 'size': item.size, 'modified': item.deleted_at} for item in items], 'total': db.scalar(select(func.count()).select_from(TrashItem)), 'revision': trash_revision(db)}
-
+        match = func.lower(TrashItem.original_path).contains(q.lower(), autoescape=True)
+        field = func.lower(TrashItem.original_path) if sort == 'name' else TrashItem.size if sort == 'size' else TrashItem.deleted_at
+        order = field.desc() if direction == 'desc' else field.asc()
+        items = db.scalars(select(TrashItem).where(match).order_by(order, TrashItem.id).offset(offset).limit(limit))
+        return {'items': [{'id': item.id, 'name': Path(item.original_path).name, 'path': item.original_path, 'type': item.item_type, 'size': item.size, 'modified': item.deleted_at} for item in items], 'total': db.scalar(select(func.count()).select_from(TrashItem).where(match)), 'revision': trash_revision(db)}
 
 @router.post('/trash/restore')
 def restore_trash(body: TrashInput, request: Request):

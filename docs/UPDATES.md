@@ -1,3 +1,9 @@
+# Update 1.10: Trash search and sorting
+
+Search Trash by filename or original path, sort by deletion date, original path or size, and paginate filtered results on the server. **Remove all** is disabled while a search is active so a filtered view cannot accidentally empty the whole Trash. Selected deletion and restoration remain available.
+
+---
+
 # Update 1.9: Bulk trash restoration
 
 Select multiple Trash items and choose **Restore selected**. Parent folders restore before selected children. Conflicts, stale selections or database failures roll back the whole batch; existing files are never overwritten. Login and CSRF protection also apply to batch restoration.

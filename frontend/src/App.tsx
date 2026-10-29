@@ -262,8 +262,8 @@ export default function App() {
     writePreference("rootdrive-large-size", String(largeSize));
   }, [recentDays, largeSize]);
   useEffect(() => {
-    if (!fileView) return;
-    const scope = view === "smart" ? "smart:" + smartFolder : "files";
+    if (!fileView && view !== "trash") return;
+    const scope = view === "smart" ? "smart:" + smartFolder : view === "trash" ? "trash" : "files";
     writePreference(`rootdrive-sort:${scope}`, sort);
     writePreference(`rootdrive-direction:${scope}`, direction);
   }, [sort, direction, view, smartFolder, fileView]);
@@ -459,6 +459,11 @@ export default function App() {
     if (["files", "favorites", "tag"].includes(next)) {
       const saved = readSorting("files");
       setSort(saved.sort);
+      setDirection(saved.direction);
+    }
+    if (next === "trash") {
+      const saved = readSorting("trash", "modified", "desc");
+      setSort(saved.sort === "type" ? "modified" : saved.sort);
       setDirection(saved.direction);
     }
     setView(next);
@@ -927,6 +932,18 @@ export default function App() {
               <option value={10}>10 MB</option><option value={100}>100 MB</option><option value={1024}>1 GB</option><option value={10240}>10 GB</option>
             </select>
           </label>}
+          {view === "trash" && <section className="trash-filterbar" aria-label="Trash filters">
+            <div className="search-field"><Search size={17} />
+              <input type="search" aria-label="Search Trash" placeholder="Search name or original path" value={query} onChange={(event) => setQuery(event.target.value)} />
+              {query && <button className="icon-button" aria-label="Clear Trash search" onClick={() => setQuery("")}><X size={14} /></button>}
+            </div>
+            <select aria-label="Sort Trash" value={sort === "type" ? "modified" : sort} onChange={(event) => { setSort(event.target.value); setOffset(0); }}>
+              <option value="modified">Deleted date</option><option value="name">Original path</option><option value="size">Size</option>
+            </select>
+            <button className="icon-button" aria-label={direction === "asc" ? "Sort Trash descending" : "Sort Trash ascending"} onClick={() => { setDirection(direction === "asc" ? "desc" : "asc"); setOffset(0); }}>
+              {direction === "asc" ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
+            </button>
+          </section>}
           {view === "trash" && (
             <div className="trash-toolbar">
               <span className="muted">{selected.length ? `${selected.length} selected · ${bytes(selectionSize(selected, true))}` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>
@@ -943,7 +960,8 @@ export default function App() {
               </div>
               <button
                 className="button secondary danger-text"
-                disabled={busy || loading || !!error || !listing.total || !listing.revision}
+                disabled={busy || loading || !!error || !listing.total || !listing.revision || (!selected.length && (!!query || !!search))}
+                title={!selected.length && (query || search) ? "Clear search to remove all Trash items" : undefined}
                 onClick={() => selected.length ? chooseAction("purge", selected) : setModal({
                   action: "emptytrash",
                   entries: [],

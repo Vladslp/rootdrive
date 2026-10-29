@@ -123,6 +123,15 @@ export default function App() {
   const [accountError, setAccountError] = useState("");
   const [view, setView] = useState<View>("files");
   const [smartFolder, setSmartFolder] = useState<SmartFolder>("recent");
+  const [recentDays, setRecentDays] = useState(() => {
+    const value = Number(readPreference("rootdrive-recent-days", "7"));
+    return [7, 30, 90].includes(value) ? value : 7;
+  });
+  const [largeSize, setLargeSize] = useState(() => {
+    const value = Number(readPreference("rootdrive-large-size", "100"));
+    return [10, 100, 1024, 10240].includes(value) ? value : 100;
+  });
+  const smartDetail = (folder: typeof smartFolders[number]) => folder.id === "recent" ? `Modified in the last ${recentDays} days` : folder.id === "large" ? `${bytes(largeSize * 1024 * 1024)} and larger` : folder.detail;
   const [commandsOpen, setCommandsOpen] = useState(false);
   const commandKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K";
   const [path, setPath] = useState("");
@@ -141,8 +150,8 @@ export default function App() {
   const [revision, setRevision] = useState(0);
   const listingCache = useRef(new Map<string, { value: Listing; at: number }>());
   const cacheKey = useCallback((nextView: View, nextPath: string, nextTag: string, nextSearch: string, nextOffset: number) =>
-    JSON.stringify([nextView, nextPath, nextTag, nextSearch, recursive, sort, direction, nextOffset, revision, nextView === "smart" ? smartFolder : ""]),
-  [recursive, sort, direction, revision, smartFolder]);
+    JSON.stringify([nextView, nextPath, nextTag, nextSearch, recursive, sort, direction, nextOffset, revision, nextView === "smart" ? [smartFolder, recentDays, largeSize] : ""]),
+  [recursive, sort, direction, revision, smartFolder, recentDays, largeSize]);
   const [listing, setListing] = useState<Listing>({ items: [], total: 0 });
   const [shares, setShares] = useState<{ items: Shared[]; total: number }>({
     items: [],
@@ -249,6 +258,10 @@ export default function App() {
       ?.setAttribute("content", theme === "dark" ? "#202936" : "#f0f3f7");
   }, [theme]);
   useEffect(() => {
+    writePreference("rootdrive-recent-days", String(recentDays));
+    writePreference("rootdrive-large-size", String(largeSize));
+  }, [recentDays, largeSize]);
+  useEffect(() => {
     if (!fileView) return;
     const scope = view === "smart" ? "smart:" + smartFolder : "files";
     writePreference(`rootdrive-sort:${scope}`, sort);
@@ -305,7 +318,11 @@ export default function App() {
     });
     if (view === "favorites") params.set("favorite", "true");
     if (view === "tag") params.set("tag", activeTag);
-    if (view === "smart") params.set("kind", smartFolder);
+    if (view === "smart") {
+      params.set("kind", smartFolder);
+      params.set("recent_days", String(recentDays));
+      params.set("min_size_mb", String(largeSize));
+    }
     const endpoint =
       view === "trash"
         ? "/trash"
@@ -359,6 +376,8 @@ export default function App() {
     offset,
     activeTag,
     smartFolder,
+    recentDays,
+    largeSize,
     revision,
     cacheKey,
   ]);
@@ -599,7 +618,7 @@ export default function App() {
         )[view];
   const commands: Command[] = [
     { id: "files", label: "My files", icon: HardDrive, keywords: "home browse", run: () => navigate("files") },
-    ...smartFolders.map((folder) => ({ id: folder.id, label: folder.label, detail: folder.detail, icon: folder.icon, keywords: "smart folder", run: () => navigateSmart(folder.id) })),
+    ...smartFolders.map((folder) => ({ id: folder.id, label: folder.label, detail: smartDetail(folder), icon: folder.icon, keywords: "smart folder", run: () => navigateSmart(folder.id) })),
     { id: "favorites", label: "Favorites", icon: Star, run: () => navigate("favorites") },
     ...(account?.shares_enabled ? [{ id: "shares", label: "Shared links", icon: Link, run: () => navigate("shares") }] : []),
     { id: "trash", label: "Trash", icon: Trash2, run: () => navigate("trash") },
@@ -679,7 +698,7 @@ export default function App() {
           {smartFolders.map((folder) => <button key={folder.id}
             className={"nav-link " + (view === "smart" && smartFolder === folder.id ? "active" : "")}
             aria-current={view === "smart" && smartFolder === folder.id ? "page" : undefined}
-            title={folder.detail} onClick={() => navigateSmart(folder.id)}>
+            title={smartDetail(folder)} onClick={() => navigateSmart(folder.id)}>
             <folder.icon size={18} /><span>{folder.label}</span>
           </button>)}
         </section>
@@ -897,7 +916,17 @@ export default function App() {
             </div>
           )}
           </div>
-          {view === "smart" && <p className="smart-description"><Sparkles size={14} />{smartFolders.find((folder) => folder.id === smartFolder)!.detail}</p>}
+          {view === "smart" && <p className="smart-description"><Sparkles size={14} />{smartDetail(smartFolders.find((folder) => folder.id === smartFolder)!)}</p>}
+          {view === "smart" && smartFolder === "recent" && <label className="smart-filters">Modified within
+            <select aria-label="Recent period" value={recentDays} onChange={(event) => { setRecentDays(Number(event.target.value)); setOffset(0); }}>
+              <option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option>
+            </select>
+          </label>}
+          {view === "smart" && smartFolder === "large" && <label className="smart-filters">Minimum size
+            <select aria-label="Minimum file size" value={largeSize} onChange={(event) => { setLargeSize(Number(event.target.value)); setOffset(0); }}>
+              <option value={10}>10 MB</option><option value={100}>100 MB</option><option value={1024}>1 GB</option><option value={10240}>10 GB</option>
+            </select>
+          </label>}
           {view === "trash" && (
             <div className="trash-toolbar">
               <span className="muted">{selected.length ? `${selected.length} selected · ${bytes(selectionSize(selected, true))}` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>

@@ -1,3 +1,9 @@
+# Update 1.7: Smart folder filters
+
+Choose 7, 30 or 90 days for Recent files, and 10 MB, 100 MB, 1 GB or 10 GB for Large files. Rules are enforced by the backend, cached separately and remembered by this browser.
+
+---
+
 # Update 1.6: Selection size
 
 The selection toolbar shows the combined size of selected files and folders. Nested selections avoid double-counting a selected folder’s contents; separate Trash copies are counted independently.

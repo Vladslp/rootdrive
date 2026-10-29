@@ -29,10 +29,10 @@ def list_files(request: Request, path: str = '', q: str = '', recursive: bool = 
 
 
 @router.get('/smart-files', response_model=FileListing)
-def list_smart_files(request: Request, kind: Literal['recent', 'photos', 'documents', 'large'], q: str = Query('', max_length=240), sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200), user=Depends(require_access)):
+def list_smart_files(request: Request, kind: Literal['recent', 'photos', 'documents', 'large'], recent_days: int = Query(7, ge=1, le=365), min_size_mb: int = Query(100, ge=1, le=1048576), q: str = Query('', max_length=240), sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200), user=Depends(require_access)):
     fs = request.app.state.fs
     with fs.lock, request.app.state.db() as db:
-        listing = smart_listing(fs, kind, q, sort, direction, offset, limit)
+        listing = smart_listing(fs, kind, q, sort, direction, offset, limit, recent_days, min_size_mb)
         enrich(db, listing['items'], owner_key(user))
         return listing
 

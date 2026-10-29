@@ -132,3 +132,18 @@ def test_smart_files_require_login_and_keep_favorites_per_user(tmp_path):
         client.post('/api/auth/logout', headers={'X-CSRF-Token': csrf})
         client.post('/api/auth/login', json={'username': 'bob', 'password': 'passphrase123'})
         assert smart(client, 'photos')['items'][0]['favorite'] is False
+
+def test_smart_rules_are_configurable_and_cached_separately(client, app):
+    old = app.state.fs.root / 'older.txt'
+    old.write_text('old')
+    timestamp = time.time() - 20 * 86400
+    os.utime(old, (timestamp, timestamp))
+    with (app.state.fs.root / 'medium.bin').open('wb') as handle:
+        handle.truncate(20 * 1024 * 1024)
+    assert smart(client, 'recent', recent_days=7)['total'] == 1
+    assert smart(client, 'recent', recent_days=30)['total'] == 2
+    assert smart(client, 'large', min_size_mb=100)['total'] == 0
+    assert smart(client, 'large', min_size_mb=10)['total'] == 1
+    assert smart(client, 'large', min_size_mb=100)['total'] == 0
+    assert client.get('/api/smart-files', params={'kind': 'recent', 'recent_days': 0}).status_code == 422
+    assert client.get('/api/smart-files', params={'kind': 'large', 'min_size_mb': -1}).status_code == 422

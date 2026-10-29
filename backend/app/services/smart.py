@@ -10,13 +10,13 @@ PHOTO_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', 
 DOCUMENT_EXTENSIONS = {'.txt', '.md', '.markdown', '.rtf', '.pdf', '.doc', '.docx', '.odt', '.xls', '.xlsx', '.ods', '.csv', '.ppt', '.pptx', '.odp', '.pages', '.numbers', '.key', '.epub'}
 
 
-def smart_listing(fs, kind, query, sort, direction, offset, limit):
-    key = (kind, query.casefold(), sort, direction, offset, limit)
+def smart_listing(fs, kind, query, sort, direction, offset, limit, recent_days=7, min_size_mb=100):
+    key = (kind, query.casefold(), sort, direction, offset, limit, recent_days, min_size_mb)
     now = time.monotonic()
     cached = fs.smart_cache.get(key)
     if cached and now - cached[0] < 15:
         return deepcopy(cached[1])
-    cutoff = time.time() - RECENT_SECONDS
+    cutoff = time.time() - recent_days * 86400
     total = 0
 
     def candidates():
@@ -41,7 +41,7 @@ def smart_listing(fs, kind, query, sort, direction, offset, limit):
                 (kind == 'recent' and entry['modified'] >= cutoff)
                 or (kind == 'photos' and suffix in PHOTO_EXTENSIONS)
                 or (kind == 'documents' and (suffix in DOCUMENT_EXTENSIONS or mime.startswith('text/plain')))
-                or (kind == 'large' and entry['size'] >= LARGE_BYTES)
+                or (kind == 'large' and entry['size'] >= min_size_mb * 1024 * 1024)
             )
             if matches:
                 total += 1

@@ -500,3 +500,22 @@ test("the selection bar shows the actual combined size", async () => {
   });
   assert.equal(host.querySelector(".selection-size").textContent, "24 B");
 });
+
+test("smart folder controls send real filter parameters and remember their values", async () => {
+  await click("Recent files");
+  await act(async () => {
+    const select = host.querySelector('select[aria-label="Recent period"]');
+    select.value = "30";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  assert.equal(requests.findLast(({ url }) => url.pathname === "/api/smart-files").url.searchParams.get("recent_days"), "30");
+  await click("Large files");
+  await act(async () => {
+    const select = host.querySelector('select[aria-label="Minimum file size"]');
+    select.value = "10";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  assert.equal(requests.findLast(({ url }) => url.pathname === "/api/smart-files").url.searchParams.get("min_size_mb"), "10");
+  await click("Recent files");
+  assert.equal(host.querySelector('select[aria-label="Recent period"]').value, "30");
+});

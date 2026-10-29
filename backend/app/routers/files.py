@@ -115,6 +115,26 @@ def upload_files(request: Request, path: str = '', files: list[UploadFile] = Fil
                 file.file.close()
 
 
+@router.get('/files/location')
+def file_location(request: Request, path: str, limit: int = Query(60, ge=1, le=200)):
+    fs = request.app.state.fs
+    with fs.lock:
+        source = fs.path(path, allow_root=False)
+        entry = fs.entry(source, folder_details=False)
+
+        def order(item):
+            return item['type'] != 'folder', item['name'].casefold(), item['path']
+
+        target = order(entry)
+        before = 0
+        for candidate in fs.walk(source.parent, False):
+            try:
+                before += order(fs.entry(candidate, folder_details=False)) < target
+            except FileNotFoundError:
+                continue
+        return {'path': '' if source.parent == fs.root else fs.relative(source.parent), 'offset': before // limit * limit}
+
+
 @router.get('/files/download')
 def download_file(request: Request, path: str):
     return request.app.state.fs.response(path)

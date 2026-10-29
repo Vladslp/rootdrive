@@ -61,6 +61,7 @@ beforeEach(async () => {
     else if (url.pathname === "/api/uploads") data = { items: [] };
     else if (url.pathname === "/api/storage/stats") data = { file_count: 1, stored_bytes: 12, disk_total: 1000, disk_free: 800, disk_used: 200, disk_percent: 20, system_bytes: 188, trash_bytes: 0, versions_bytes: 0, uploads_bytes: 0, cache_bytes: 0, exports_bytes: 0, categories: { images: 12, videos: 0, documents: 0, other: 0 } };
     else if (url.pathname === "/api/files") { if (delayListing) await delayListing; data = { items: url.searchParams.get("path") ? [] : [folder, photo, ...additionalFiles], total: url.searchParams.get("path") ? 0 : 2 + additionalFiles.length }; }
+    else if (url.pathname === "/api/files/location") data = { path: "", offset: 0 };
     else if (url.pathname === "/api/files/compress") data = { ...photo, name: requests.at(-1).body.name, path: requests.at(-1).body.name, mime: "application/zip" };
     else if (url.pathname === "/api/smart-files") data = { items: [photo], total: 1 };
     else if (url.pathname === "/api/search") data = { items: [{ ...photo, path: "Nested/photo.png" }], total: 1 };
@@ -438,4 +439,27 @@ test("file shortcuts ignore text entry, repeated events and multi-selection rena
   await act(async () => host.querySelector('input[aria-label="Select Folder"]').click());
   await keyOn(window, "Delete");
   assert.equal(host.querySelector('[role="dialog"]'), null);
+});
+
+test("Open file location leaves a smart view and selects the original file", async () => {
+  await click("All photos");
+  await click("Actions for photo.png");
+  await act(async () => [...host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent.trim() === "Open file location").click());
+  assert.equal(heading(), "My files");
+  assert.equal(host.querySelector('input[aria-label="Select photo.png"]').checked, true);
+  assert.ok(requests.some(({ url }) => url.pathname === "/api/files/location" && url.searchParams.get("path") === "photo.png"));
+});
+
+test("Open file location jumps directly to the target page", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url, "http://localhost");
+    if (parsed.pathname === "/api/files/location") return { ok: true, json: async () => ({ path: "", offset: 60 }) };
+    if (parsed.pathname === "/api/files" && parsed.searchParams.get("offset") === "60") return { ok: true, json: async () => ({ items: [photo], total: 61 }) };
+    return originalFetch(url, options);
+  };
+  await click("All photos");
+  await click("Actions for photo.png");
+  await act(async () => [...host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent.trim() === "Open file location").click());
+  assert.equal(host.querySelector('input[aria-label="Select photo.png"]').checked, true);
 });

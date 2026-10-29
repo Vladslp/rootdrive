@@ -25,6 +25,7 @@ import {
   CircleHelp,
   Download,
   FolderInput,
+  FolderSearch,
   FolderArchive,
   FilePlus2,
   FolderPlus,
@@ -118,6 +119,7 @@ export default function App() {
   const [commandsOpen, setCommandsOpen] = useState(false);
   const commandKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K";
   const [path, setPath] = useState("");
+  const revealPath = useRef<string | null>(null);
   const [activeTag, setActiveTag] = useState("");
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagManager, setTagManager] = useState(false);
@@ -278,7 +280,7 @@ export default function App() {
     if (usable) setListing(cached.value);
     setLoading(!usable);
     setError("");
-    setSelection([]);
+    if (!revealPath.current) setSelection([]);
     const params = new URLSearchParams({
       path,
       q: search,
@@ -312,6 +314,12 @@ export default function App() {
             listingCache.current.set(key, { value, at: Date.now() });
             if (listingCache.current.size > 12) listingCache.current.delete(listingCache.current.keys().next().value!);
             setListing(value);
+            if (revealPath.current && view === "files") {
+              const found = result.items.some((item) => item.path === revealPath.current);
+              setSelection(found ? [revealPath.current] : []);
+              revealPath.current = null;
+              if (!found) notify("File moved or is no longer available");
+            }
           }
           if (!result.items.length && offset && result.total <= offset)
             setOffset(Math.max(0, offset - pageSize));
@@ -417,6 +425,7 @@ export default function App() {
     setLoading(Boolean(["files", "favorites", "tag", "smart", "trash", "shares"].includes(next)) && !usable);
     setError("");
     setView(next);
+    revealPath.current = null;
     setCommandsOpen(false);
     setPath(destination);
     setActiveTag(tag);
@@ -428,6 +437,21 @@ export default function App() {
     setContext(null);
     setTagContext(null);
   }, [cacheKey]);
+  const reveal = useCallback(async (entry: Entry) => {
+    setContext(null);
+    setBusy(true);
+    try {
+      const location = await api<{ path: string; offset: number }>("/files/location?" + new URLSearchParams({ path: entry.path, limit: String(pageSize) }));
+      navigate("files", location.path);
+      revealPath.current = entry.path;
+      setOffset(location.offset);
+      setSort("name");
+      setDirection("asc");
+      setRecursive(false);
+      refresh();
+    } catch (error) { notify((error as Error).message); }
+    finally { setBusy(false); }
+  }, [navigate, refresh, notify]);
   const navigateSmart = useCallback((id: SmartFolder) => {
     const folder = smartFolders.find((item) => item.id === id)!;
     setSmartFolder(id);
@@ -569,6 +593,7 @@ export default function App() {
     { id: "refresh", label: "Refresh", icon: History, keywords: "reload", run: refresh },
     ...(selected.length === 1 && fileView ? [
       { id: "rename", label: "Rename selected file", detail: selected[0].name, icon: Pencil, run: () => chooseAction("rename", selected) },
+      { id: "location", label: "Open file location", detail: selected[0].name, icon: FolderSearch, run: () => void reveal(selected[0]) },
       { id: "properties", label: "File properties", detail: selected[0].name, icon: Info, run: () => chooseAction("properties", selected) },
     ] : []),
   ];
@@ -1390,6 +1415,9 @@ export default function App() {
           >
             <HardDrive size={16} />
             Open
+          </button>
+          <button role="menuitem" disabled={busy} onClick={() => void reveal(contextEntry)}>
+            <FolderSearch size={16} />Open file location
           </button>
           {canEdit(contextEntry) && (
             <button

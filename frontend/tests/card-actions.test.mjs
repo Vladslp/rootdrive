@@ -463,3 +463,32 @@ test("Open file location jumps directly to the target page", async () => {
   await act(async () => [...host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent.trim() === "Open file location").click());
   assert.equal(host.querySelector('input[aria-label="Select photo.png"]').checked, true);
 });
+
+test("file sorting survives remount and smart folders keep independent preferences", async () => {
+  await act(async () => {
+    const select = host.querySelector('select[aria-label="Sort files"]');
+    select.value = "size";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  await click("Sort descending");
+  await click("All photos");
+  assert.equal(host.querySelector('select[aria-label="Sort files"]').value, "name");
+  await click("My files");
+  assert.equal(host.querySelector('select[aria-label="Sort files"]').value, "size");
+  assert.ok(button("Sort ascending"));
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => root.render(h(App)));
+  assert.equal(host.querySelector('select[aria-label="Sort files"]').value, "size");
+  assert.equal(requests.at(-1).url.searchParams.get("sort"), "size");
+});
+
+test("invalid saved sorting falls back to safe values", async () => {
+  window.localStorage.setItem("rootdrive-sort:files", "invalid");
+  window.localStorage.setItem("rootdrive-direction:files", "invalid");
+  await act(async () => root.unmount());
+  root = createRoot(host);
+  await act(async () => root.render(h(App)));
+  assert.equal(host.querySelector('select[aria-label="Sort files"]').value, "name");
+  assert.ok(button("Sort descending"));
+});

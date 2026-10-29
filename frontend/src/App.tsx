@@ -111,6 +111,12 @@ function writePreference(name: string, value: string) {
   } catch {}
 }
 
+function readSorting(scope: string, fallback = "name", direction = "asc") {
+  const sort = readPreference(`rootdrive-sort:${scope}`, fallback);
+  const order = readPreference(`rootdrive-direction:${scope}`, direction);
+  return { sort: ["name", "size", "type", "modified"].includes(sort) ? sort : fallback, direction: ["asc", "desc"].includes(order) ? order : direction };
+}
+
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
   const [accountError, setAccountError] = useState("");
@@ -128,8 +134,8 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [recursive, setRecursive] = useState(false);
-  const [sort, setSort] = useState("name");
-  const [direction, setDirection] = useState("asc");
+  const [sort, setSort] = useState(() => readSorting("files").sort);
+  const [direction, setDirection] = useState(() => readSorting("files").direction);
   const [offset, setOffset] = useState(0);
   const [revision, setRevision] = useState(0);
   const listingCache = useRef(new Map<string, { value: Listing; at: number }>());
@@ -241,6 +247,12 @@ export default function App() {
       .querySelector("meta[name=theme-color]")
       ?.setAttribute("content", theme === "dark" ? "#202936" : "#f0f3f7");
   }, [theme]);
+  useEffect(() => {
+    if (!fileView) return;
+    const scope = view === "smart" ? "smart:" + smartFolder : "files";
+    writePreference(`rootdrive-sort:${scope}`, sort);
+    writePreference(`rootdrive-direction:${scope}`, direction);
+  }, [sort, direction, view, smartFolder, fileView]);
   useEffect(() => {
     writePreference("rootdrive-layout", layout);
   }, [layout]);
@@ -424,6 +436,11 @@ export default function App() {
     if (usable) setListing(cached.value);
     setLoading(Boolean(["files", "favorites", "tag", "smart", "trash", "shares"].includes(next)) && !usable);
     setError("");
+    if (["files", "favorites", "tag"].includes(next)) {
+      const saved = readSorting("files");
+      setSort(saved.sort);
+      setDirection(saved.direction);
+    }
     setView(next);
     revealPath.current = null;
     setCommandsOpen(false);
@@ -455,8 +472,9 @@ export default function App() {
   const navigateSmart = useCallback((id: SmartFolder) => {
     const folder = smartFolders.find((item) => item.id === id)!;
     setSmartFolder(id);
-    setSort(folder.sort);
-    setDirection(folder.direction);
+    const saved = readSorting("smart:" + id, folder.sort, folder.direction);
+    setSort(saved.sort);
+    setDirection(saved.direction);
     navigate("smart");
     setLoading(true);
     if (view === "smart" && smartFolder === id) refresh();

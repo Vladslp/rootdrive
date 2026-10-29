@@ -1,3 +1,9 @@
+# Update 1.5: Sorting preferences
+
+File sorting and direction survive browser reloads. Each smart folder remembers its own order; ordinary folders, Favorites and tags share the normal file preference. Invalid saved values fall back to supported defaults.
+
+---
+
 # Update 1.4: Open file location
 
 **Open file location** in the file menu and quick commands opens the physical parent folder and selects the original item. The backend calculates its page directly, including targets beyond the first page. Works from search, Favorites, tags and smart folders.

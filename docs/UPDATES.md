@@ -1,3 +1,9 @@
+# Update 1.9: Bulk trash restoration
+
+Select multiple Trash items and choose **Restore selected**. Parent folders restore before selected children. Conflicts, stale selections or database failures roll back the whole batch; existing files are never overwritten. Login and CSRF protection also apply to batch restoration.
+
+---
+
 # Update 1.8: Recent commands
 
 Quick commands remembers the last five general command IDs in this browser, separately for each signed-in username or the shared workspace. No filenames, paths, search text or credentials are saved. File-specific actions are excluded; **Clear history** removes the list.

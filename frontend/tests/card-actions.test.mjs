@@ -539,3 +539,13 @@ test("corrupt recent-command preferences do not prevent opening the palette", as
   assert.ok(commandInput());
   assert.ok(host.querySelectorAll('[role="option"]').length > 0);
 });
+
+test("Trash restores its selected IDs through the bulk endpoint", async () => {
+  await click("Trash");
+  await act(async () => host.querySelector('input[aria-label="Select Folder"]').click());
+  await click("Restore selected");
+  const request = requests.find(({ url }) => url.pathname === "/api/trash/restore/batch");
+  assert.equal(request.method, "POST");
+  assert.deepEqual(request.body, { ids: ["trash-1"] });
+  assert.match(host.querySelector(".toast-stack").textContent, /Restored selected/);
+});

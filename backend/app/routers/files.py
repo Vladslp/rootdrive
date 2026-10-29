@@ -13,7 +13,7 @@ from ..services.security import require_access
 from ..services.metadata import image_metadata
 from ..services.workspace import install_file, enrich, owner_key, relocate_metadata, trash_metadata, restore_metadata
 from ..services.smart import smart_listing
-from ..services.trash import purge_items, trash_revision
+from ..services.trash import restore_items, purge_items, trash_revision
 
 router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
 
@@ -257,6 +257,13 @@ class EmptyTrashInput(BaseModel):
 
 class TrashBatchInput(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=200)
+
+
+@router.post('/trash/restore/batch')
+def restore_selected_trash(body: TrashBatchInput, request: Request):
+    fs = request.app.state.fs
+    with fs.lock, request.app.state.db() as db:
+        return restore_items(fs, db, body.ids)
 
 
 @router.delete('/trash/batch')

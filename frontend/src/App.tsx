@@ -933,6 +933,10 @@ export default function App() {
               {selected.length > 0 && (
                 <button className="icon-button" aria-label="Clear selection" onClick={() => setSelection([])}><X size={16} /></button>
               )}
+              {selected.length > 0 && <button className="button secondary" disabled={busy || loading || !!error}
+                onClick={() => void perform(() => api("/trash/restore/batch", "POST", { ids: selected.map((entry) => entry.id) }), "Restored selected items")}>
+                <History size={16} />Restore selected
+              </button>}
               <div className="layout-toggle trash-layout">
                 <button className={layout === "grid" ? "active" : ""} aria-label="Grid view" onClick={() => setLayout("grid")}><LayoutGrid size={17} /></button>
                 <button className={layout === "list" ? "active" : ""} aria-label="List view" onClick={() => setLayout("list")}><List size={18} /></button>

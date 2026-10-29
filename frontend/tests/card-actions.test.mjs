@@ -492,3 +492,11 @@ test("invalid saved sorting falls back to safe values", async () => {
   assert.equal(host.querySelector('select[aria-label="Sort files"]').value, "name");
   assert.ok(button("Sort descending"));
 });
+
+test("the selection bar shows the actual combined size", async () => {
+  await act(async () => {
+    host.querySelector('input[aria-label="Select Folder"]').click();
+    host.querySelector('input[aria-label="Select photo.png"]').click();
+  });
+  assert.equal(host.querySelector(".selection-size").textContent, "24 B");
+});

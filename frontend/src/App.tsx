@@ -66,6 +66,7 @@ import {
   type Stats,
   type Tag,
 } from "./services/api";
+import { selectionSize } from "./services/selection";
 import { Art, kindOf } from "./components/Art";
 import { canEdit, editorKind } from "./services/editor";
 import { StorageArtwork } from "./components/StorageArtwork";
@@ -899,7 +900,7 @@ export default function App() {
           {view === "smart" && <p className="smart-description"><Sparkles size={14} />{smartFolders.find((folder) => folder.id === smartFolder)!.detail}</p>}
           {view === "trash" && (
             <div className="trash-toolbar">
-              <span className="muted">{selected.length ? `${selected.length} selected` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>
+              <span className="muted">{selected.length ? `${selected.length} selected · ${bytes(selectionSize(selected, true))}` : `${listing.total} ${listing.total === 1 ? "item" : "items"}`}</span>
               {selected.length > 0 && (
                 <button className="icon-button" aria-label="Clear selection" onClick={() => setSelection([])}><X size={16} /></button>
               )}
@@ -1136,7 +1137,7 @@ export default function App() {
               >
                 <X size={17} />
               </button>
-              <strong>{selected.length} selected</strong>
+              <strong>{selected.length} selected</strong><span className="muted selection-size">{bytes(selectionSize(selected))}</span>
               <div />
               <button
                 onClick={() => chooseAction("move", selected)}

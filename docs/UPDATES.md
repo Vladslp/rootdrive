@@ -1,3 +1,9 @@
+# Update 1.6: Selection size
+
+The selection toolbar shows the combined size of selected files and folders. Nested selections avoid double-counting a selected folder’s contents; separate Trash copies are counted independently.
+
+---
+
 # Update 1.5: Sorting preferences
 
 File sorting and direction survive browser reloads. Each smart folder remembers its own order; ordinary folders, Favorites and tags share the normal file preference. Invalid saved values fall back to supported defaults.

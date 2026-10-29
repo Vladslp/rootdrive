@@ -53,3 +53,4 @@
 .selection-size { font-size: 12px; white-space: nowrap; }
 .smart-filters { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--muted); margin-bottom: 20px; }
 .smart-filters select { width: auto; min-height: 36px; padding: 6px 12px; font-size: 12px; }
+.command-status { flex-wrap: wrap; justify-content: space-between; }

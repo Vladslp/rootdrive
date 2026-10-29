@@ -630,9 +630,9 @@ export default function App() {
     { id: "theme", label: theme === "dark" ? "Switch to light theme" : "Switch to dark theme", icon: theme === "dark" ? Sun : Moon, keywords: "appearance", run: () => setTheme(theme === "dark" ? "light" : "dark") },
     { id: "refresh", label: "Refresh", icon: History, keywords: "reload", run: refresh },
     ...(selected.length === 1 && fileView ? [
-      { id: "rename", label: "Rename selected file", detail: selected[0].name, icon: Pencil, run: () => chooseAction("rename", selected) },
-      { id: "location", label: "Open file location", detail: selected[0].name, icon: FolderSearch, run: () => void reveal(selected[0]) },
-      { id: "properties", label: "File properties", detail: selected[0].name, icon: Info, run: () => chooseAction("properties", selected) },
+      { id: "rename", remember: false, label: "Rename selected file", detail: selected[0].name, icon: Pencil, run: () => chooseAction("rename", selected) },
+      { id: "location", remember: false, label: "Open file location", detail: selected[0].name, icon: FolderSearch, run: () => void reveal(selected[0]) },
+      { id: "properties", remember: false, label: "File properties", detail: selected[0].name, icon: Info, run: () => chooseAction("properties", selected) },
     ] : []),
   ];
   if (!account)
@@ -1410,7 +1410,7 @@ export default function App() {
           </div>
         ))}
       </div>
-      {commandsOpen && ready && <CommandPalette commands={commands} close={() => setCommandsOpen(false)} open={open} />}
+      {commandsOpen && ready && <CommandPalette key={account.auth_enabled ? account.user!.username : "shared"} historyKey={"rootdrive-commands:" + (account.auth_enabled ? "user:" + account.user!.username : "workspace")} commands={commands} close={() => setCommandsOpen(false)} open={open} />}
       {tagContext && (
         <div
           role="menu"

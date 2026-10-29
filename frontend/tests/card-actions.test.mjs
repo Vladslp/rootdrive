@@ -519,3 +519,23 @@ test("smart folder controls send real filter parameters and remember their value
   await click("Recent files");
   assert.equal(host.querySelector('select[aria-label="Recent period"]').value, "30");
 });
+
+test("quick commands remember command IDs and can clear their recent history", async () => {
+  await click("Quick commands");
+  await typeIn(commandInput(), "storage");
+  await keyOn(commandInput(), "Enter");
+  await click("Quick commands");
+  assert.match(host.querySelector(".command-group").textContent, /Recently used/);
+  assert.match(host.querySelector('[role="option"]').textContent, /Storage/);
+  assert.deepEqual(JSON.parse(window.localStorage.getItem("rootdrive-commands:workspace")), ["storage"]);
+  await click("Clear history");
+  assert.equal(window.localStorage.getItem("rootdrive-commands:workspace"), null);
+  assert.equal(host.querySelector(".command-group").textContent, "Jump to or create");
+});
+
+test("corrupt recent-command preferences do not prevent opening the palette", async () => {
+  window.localStorage.setItem("rootdrive-commands:workspace", '{bad');
+  await click("Quick commands");
+  assert.ok(commandInput());
+  assert.ok(host.querySelectorAll('[role="option"]').length > 0);
+});

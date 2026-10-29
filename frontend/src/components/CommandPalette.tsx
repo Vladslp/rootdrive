@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { CornerDownLeft, Loader2, Search, type LucideIcon } from "lucide-react";
 import { api, type Entry, type Listing } from "../services/api";
+import { readCommandHistory, rememberCommand } from "../services/commandHistory";
 import { Art, kindOf } from "./Art";
 import { Dialog } from "./Dialog";
 
@@ -11,13 +12,17 @@ export type Command = {
   keywords?: string;
   icon: LucideIcon;
   run: () => void;
+  remember?: boolean;
 };
 
-export function CommandPalette({ commands, close, open }: {
+export function CommandPalette({ commands, close, open, historyKey }: {
+  historyKey: string;
   commands: Command[];
   close: () => void;
   open: (entry: Entry) => void;
 }) {
+  const [recent, setRecent] = useState(() => readCommandHistory(historyKey));
+  const recentIds = recent.filter((id) => commands.some((command) => command.id === id && command.remember !== false));
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [retry, setRetry] = useState(0);
@@ -31,6 +36,10 @@ export function CommandPalette({ commands, close, open }: {
     `${command.label} ${command.detail || ""} ${command.keywords || ""}`.toLocaleLowerCase().includes(part))).sort((first, second) =>
       Number(!words.every((word) => first.label.toLocaleLowerCase().includes(word))) -
       Number(!words.every((word) => second.label.toLocaleLowerCase().includes(word))));
+  if (!term) matching.sort((first, second) => {
+    const rank = (id: string) => recentIds.includes(id) ? recentIds.indexOf(id) : recentIds.length;
+    return rank(first.id) - rank(second.id);
+  });
   const files = searchFiles && result?.query === term ? result.items : [];
   const error = searchFiles && result?.query === term ? result.error : undefined;
   const loading = searchFiles && result?.query !== term;
@@ -59,7 +68,10 @@ export function CommandPalette({ commands, close, open }: {
     const file = files[index - matching.length];
     if (!command && !file) return;
     close();
-    if (command) command.run();
+    if (command) {
+      if (command.remember !== false) setRecent(rememberCommand(historyKey, command.id, recent));
+      command.run();
+    }
     else open(file);
   }
 
@@ -88,8 +100,10 @@ export function CommandPalette({ commands, close, open }: {
         {loading && <Loader2 size={17} className="spin" aria-label="Searching files" />}
       </div>
       <div className="command-results" id={id} role="listbox" aria-label="Commands and files" ref={list}>
-        {matching.length > 0 && <div className="command-group" role="presentation">{term ? "Commands" : "Jump to or create"}</div>}
+        {matching.length > 0 && <div className="command-group" role="presentation">{term ? "Commands" : recentIds.length ? "Recently used" : "Jump to or create"}</div>}
         {matching.map((command, index) => (
+          <div key={command.id} role="presentation">
+          {!term && recentIds.length > 0 && index === recentIds.length && <div className="command-group" role="presentation">Commands</div>}
           <button type="button" role="option" tabIndex={-1} aria-selected={current === index}
             id={`${id}-${index}`} data-command-index={index} key={command.id}
             className={"command-row" + (current === index ? " is-active" : "")}
@@ -98,6 +112,7 @@ export function CommandPalette({ commands, close, open }: {
             <span className="command-label"><strong>{command.label}</strong>{command.detail && <small>{command.detail}</small>}</span>
             <CornerDownLeft size={15} className="command-enter" aria-hidden="true" />
           </button>
+          </div>
         ))}
         {files.length > 0 && <div className="command-group" role="presentation">Files · all folders</div>}
         {files.map((entry, index) => {
@@ -115,6 +130,10 @@ export function CommandPalette({ commands, close, open }: {
       <div className="command-status" role="status">
         {error ? <><span className="error-text">{error}</span><button className="text-button" onClick={() => { setResult(null); setRetry((value) => value + 1); }}>Try again</button></> :
           loading ? "Searching your files…" : !count ? "No matches. Try another name." : !searchFiles ? "Type 2 characters to find files anywhere." : `${files.length} ${files.length === 1 ? "file match" : "file matches"}`}
+        {!term && recentIds.length > 0 && <button className="text-button" onClick={() => {
+          try { localStorage.removeItem(historyKey); } catch {}
+          setRecent([]); setActive(0);
+        }}>Clear history</button>}
       </div>
       <footer className="command-footer"><span><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span><kbd>↵</kbd> Open</span><span><kbd>esc</kbd> Close</span></footer>
     </Dialog>

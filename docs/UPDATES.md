@@ -1,3 +1,9 @@
+# Update 1.8: Recent commands
+
+Quick commands remembers the last five general command IDs in this browser, separately for each signed-in username or the shared workspace. No filenames, paths, search text or credentials are saved. File-specific actions are excluded; **Clear history** removes the list.
+
+---
+
 # Update 1.7: Smart folder filters
 
 Choose 7, 30 or 90 days for Recent files, and 10 MB, 100 MB, 1 GB or 10 GB for Large files. Rules are enforced by the backend, cached separately and remembered by this browser.

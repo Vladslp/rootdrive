@@ -126,3 +126,9 @@ Pin a folder from its menu; unpin it with the sidebar ×. Pins, albums and playl
 DOCX and ODT editors can apply whole-paragraph bold/italic, headings, bullet/numbered lists and append new paragraphs. Complex embedded paragraphs stay locked and are preserved. This is a paragraph editor, not a page-layout replacement for Word or LibreOffice. Save the original with a version backup or save a separate copy.
 
 Audio lets you create persistent playlists. The native player stays active while navigating RootDrive and streams with HTTP byte ranges. Browser format support determines which tracks can play; files remain downloadable.
+
+### Install as an app
+
+Open Settings → Install RootDrive, or use the browser's install menu. On Safari use Add to Dock / Add to Home Screen. Installation requires localhost or HTTPS; a plain HTTP LAN address is not sufficient. See [browser installation requirements](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
+
+Only the static shell, icons and scripts are cached. File contents, API responses and public share pages are never cached by the service worker. Offline mode shows a reconnect state; it does not make private files available offline.

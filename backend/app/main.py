@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import ROOT, Settings
@@ -115,6 +115,19 @@ def create_app(settings: Settings | None = None):
     dist = ROOT / 'frontend/dist'
     if dist.exists():
         app.mount('/assets', StaticFiles(directory=dist / 'assets'), name='assets')
+
+        @app.get('/service-worker.js', include_in_schema=False)
+        def service_worker():
+            content = (dist / 'service-worker.js').read_text().replace('__ROOTDRIVE_VERSION__', RELEASE['version'])
+            return Response(content, media_type='application/javascript', headers={'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/'})
+
+        @app.get('/manifest.webmanifest', include_in_schema=False)
+        def manifest():
+            return FileResponse(dist / 'manifest.webmanifest', media_type='application/manifest+json')
+
+        @app.get('/offline.html', include_in_schema=False)
+        def offline_page():
+            return FileResponse(dist / 'offline.html', media_type='text/html')
 
         @app.get('/{path:path}', include_in_schema=False)
         def frontend(path: str):

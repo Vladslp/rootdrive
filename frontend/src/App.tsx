@@ -73,6 +73,7 @@ import {
 } from "./services/api";
 import { selectionSize } from "./services/selection";
 import release from "../../backend/app/release.json";
+import { InstallSettings } from "./components/InstallSettings";
 import { PinnedFolders } from "./components/PinnedFolders";
 import { ArchiveDialog } from "./components/ArchiveDialog";
 import { isPhoto } from "./components/FileArtwork";
@@ -1400,6 +1401,7 @@ export default function App() {
                   ))}
                 </div>
               </section>
+              <InstallSettings />
               <UploadLimitSettings
                 account={account}
                 saved={(limit) => {

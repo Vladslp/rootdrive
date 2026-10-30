@@ -1,3 +1,9 @@
+# Update 1.57: App Install
+
+Install RootDrive as a standalone web app. The service worker caches only the static app shell and assets; API responses, shared pages and file contents are never stored offline.
+
+---
+
 # Update 1.56: Creative Workspace
 
 Pin folders to the sidebar, preview Markdown beside code, format DOCX/ODT paragraphs and create audio playlists with continuous playback across navigation.

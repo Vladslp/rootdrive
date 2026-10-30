@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "RootDrive",
+  "short_name": "RootDrive",
+  "description": "Your files, locally hosted.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#202a37",
+  "theme_color": "#202a37",
+  "icons": [
+    { "src": "/assets/icons/install-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icons/install-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

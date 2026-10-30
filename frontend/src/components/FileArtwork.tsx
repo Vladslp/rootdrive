@@ -6,7 +6,7 @@ export function isPhoto(entry: Entry) {
   return (
     entry.type === "file" &&
     (/^image\/(jpeg|png|webp|gif|heic|heif|avif)$/.test(entry.mime || "") ||
-      /\.(heic|heif|avif)$/i.test(entry.name))
+      /\.(heic|heif|avif|cr2|cr3|nef|arw|dng|orf|rw2|raf)$/i.test(entry.name))
   );
 }
 

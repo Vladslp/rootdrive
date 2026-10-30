@@ -72,6 +72,7 @@ import {
 import { selectionSize } from "./services/selection";
 import release from "../../backend/app/release.json";
 import { ArchiveDialog } from "./components/ArchiveDialog";
+import { isPhoto } from "./components/FileArtwork";
 import { Art, kindOf } from "./components/Art";
 import { canEdit, editorKind } from "./services/editor";
 import { StorageArtwork } from "./components/StorageArtwork";
@@ -101,6 +102,7 @@ import { UploadButton } from "./components/UploadButton";
 import { TagDeleteDialog } from "./components/TagDeleteDialog";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
+const PhotoStudio = lazy(() => import("./components/PhotoStudio"));
 const Discovery = lazy(() => import("./components/Discovery"));
 const PhotoGallery = lazy(() => import("./components/PhotoGallery"));
 const EditorDialog = lazy(() => import("./components/EditorDialog"));
@@ -1578,6 +1580,7 @@ export default function App() {
             <Star size={16} />
             {contextEntry.favorite ? "Remove favorite" : "Add to favorites"}
           </button>
+          {isPhoto(contextEntry) && <button role="menuitem" onClick={() => chooseAction("export", (selected.some((entry) => entry.path === contextEntry.path) ? selected : [contextEntry]).filter(isPhoto))}><Download size={16} />Export photos</button>}
           <hr />
           <button role="menuitem" onClick={() => { setClipboard({ entries: selected.some((item) => item.path === contextEntry.path) ? selected : [contextEntry], mode: "copy" }); setContext(null); notify("Ready to copy"); }}><Copy size={16} />Copy</button>
           <button role="menuitem" onClick={() => { setClipboard({ entries: selected.some((item) => item.path === contextEntry.path) ? selected : [contextEntry], mode: "move" }); setContext(null); notify("Ready to move"); }}><Scissors size={16} />Cut</button>
@@ -1638,6 +1641,7 @@ export default function App() {
           </button>
         </div>
       )}
+      {modal?.action === "export" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><PhotoStudio entries={modal.entries} close={() => setModal(null)} saved={() => done("Photo copies saved")} /></Suspense>}
       {modal?.action === "archive" && <ArchiveDialog entry={modal.entries[0]} close={() => setModal(null)} extracted={(entry) => { done("Archive extracted"); navigate("files", entry.path); }} />}
       {modal?.action === "compress" && (
         <CompressDialog entry={modal.entries[0]} close={() => setModal(null)} created={(entry) => {

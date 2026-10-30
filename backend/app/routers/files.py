@@ -142,7 +142,7 @@ def download_file(request: Request, path: str):
 
 @router.get('/files/preview')
 def preview_file(request: Request, path: str):
-    if Path(path).suffix.lower() in {'.heic', '.heif', '.avif'}:
+    if Path(path).suffix.lower() in {'.heic', '.heif', '.avif', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf'}:
         return request.app.state.previews.response(path)
     return request.app.state.fs.response(path, preview=True)
 

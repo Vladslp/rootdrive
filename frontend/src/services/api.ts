@@ -211,3 +211,9 @@ export function saveURL(url: string) {
   link.click();
   link.remove();
 }
+
+export async function apiBlob(url: string, body: unknown, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch("/api" + url, { method: "POST", signal, headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) }, body: JSON.stringify(body) });
+  if (!response.ok) { const result = await response.json(); throw new APIError(result.error?.message || "Unable to generate preview", response.status); }
+  return response.blob();
+}

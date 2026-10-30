@@ -9,6 +9,7 @@ from fastapi.responses import Response, StreamingResponse
 from starlette.background import BackgroundTask
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pillow_heif import register_heif_opener
+from .raw_preview import RAW_EXTENSIONS, preview_image
 
 register_heif_opener(decode_threads=1, thumbnails=True, depth_images=False, aux_images=False)
 
@@ -28,7 +29,7 @@ class Previews:
     def response(self, value: str, thumbnail: bool = False, if_none_match: str | None = None):
         with self.filesystem.lock:
             source = self.filesystem.path(value, allow_root=False)
-            if not source.is_file() or source.suffix.lower() not in {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', '.avif'}:
+            if not source.is_file() or source.suffix.lower() not in {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', '.avif'} | RAW_EXTENSIONS:
                 raise HTTPException(415, 'Image preview is not available')
             descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
         with os.fdopen(descriptor, 'rb') as handle:
@@ -47,7 +48,7 @@ class Previews:
                     with self.conversions:
                         temporary = self.cache / f'{uuid.uuid4().hex}.tmp'
                         try:
-                            with Image.open(handle) as image:
+                            with preview_image(handle, source.suffix.lower()) as image:
                                 if image.width * image.height > self.settings.max_preview_pixels:
                                     raise HTTPException(415, 'Image is too large to preview. Download the original')
                                 image.draft('RGB', (side, side))

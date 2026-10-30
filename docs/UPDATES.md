@@ -1,3 +1,9 @@
+# Update 1.55: Photo Studio
+
+Preview embedded JPEGs in supported RAW containers. Export JPEG, PNG or WebP copies, resize batches, remove EXIF/GPS and apply a text or uploaded-logo watermark with a preview.
+
+---
+
 # Update 1.54: Secure Sharing
 
 Share folders with a public browser view and protect any link with a password. Expiring HttpOnly grants, rate limits and scoped paths protect access.

@@ -1,3 +1,9 @@
+# Update 1.11: Account password change
+
+Signed-in users can change their own password in Settings after confirming the current password. Passwords use Argon2; the operation requires CSRF, is rate-limited, rotates the current cookie/security token and revokes other sessions. The form stays hidden when sign-in is disabled.
+
+---
+
 # Update 1.10: Trash search and sorting
 
 Search Trash by filename or original path, sort by deletion date, original path or size, and paginate filtered results on the server. **Remove all** is disabled while a search is active so a filtered view cannot accidentally empty the whole Trash. Selected deletion and restoration remain available.

@@ -38,6 +38,11 @@ class LoginInput(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class PasswordChangeInput(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=10, max_length=1024)
+
+
 class UserInput(LoginInput):
     password: str = Field(min_length=10, max_length=1024)
     role: str = Field(default='user', pattern='^(user|admin)$')

@@ -564,3 +564,23 @@ test("Trash search and sorting reach the backend and disable Remove all while fi
   assert.equal(request.url.searchParams.get("q"), "Folder");
   assert.equal(request.url.searchParams.get("sort"), "size");
 });
+
+test("password settings verify confirmation before submitting and rotate CSRF after success", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => url === "/api/auth/me" ? { ok: true, json: async () => ({ auth_enabled: true, shares_enabled: false, max_upload_size_mb: 2048, csrf_token: "old-csrf", user: { username: "member", role: "user" } }) } : String(url) === "/api/auth/password" ? (requests.push({ url: new URL(url, "http://localhost"), method: options.method, body: JSON.parse(options.body) }), { ok: true, json: async () => ({ csrf_token: "new-csrf" }) }) : originalFetch(url, options);
+  await act(async () => window.dispatchEvent(new window.Event("rootdrive:unauthorized")));
+  await click("Settings");
+  await click("Change password");
+  await typeIn(host.querySelector('input[name="currentPassword"]'), "old-password");
+  await typeIn(host.querySelector('input[name="newPassword"]'), "new-password-123");
+  await typeIn(host.querySelector('input[name="confirmPassword"]'), "different-password");
+  const form = host.querySelector('form[aria-label="Change password"]');
+  await act(async () => form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+  assert.match(host.querySelector('[role="alert"]').textContent, /do not match/);
+  assert.equal(requests.some(({ url }) => url.pathname === "/api/auth/password"), false);
+  await typeIn(host.querySelector('input[name="confirmPassword"]'), "new-password-123");
+  await act(async () => form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
+  assert.deepEqual(requests.find(({ url }) => url.pathname === "/api/auth/password").body, { current_password: "old-password", new_password: "new-password-123" });
+  assert.equal(host.querySelector('form[aria-label="Change password"]'), null);
+  assert.match(host.querySelector(".toast-stack").textContent, /Password changed/);
+});

@@ -59,3 +59,5 @@
 .trash-filterbar > select { width: auto; min-height: 40px; padding: 6px 10px; font-size: 12px; }
 .trash-toolbar { flex-wrap: wrap; }
 @media (max-width: 600px) { .trash-filterbar { flex-wrap: wrap; } .trash-filterbar .search-field { flex-basis: 100%; max-width: none; } }
+.password-form { display: grid; gap: 16px; max-width: 520px; }
+.password-form > p { font-size: 12px; margin: 0; }

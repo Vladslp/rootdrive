@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from ..database import Session, User
-from ..schemas import LoginInput, UserInput
+from ..schemas import LoginInput, UserInput, PasswordChangeInput
 from ..services.security import DUMMY_HASH, current_session, digest, hasher, require_access, verify_password
 
 router = APIRouter(prefix='/api/auth')
@@ -86,3 +86,34 @@ def list_users(request: Request, offset: int = Query(0, ge=0), limit: int = Quer
     with request.app.state.db() as db:
         users = db.scalars(select(User).order_by(User.created_at, User.id).offset(offset).limit(limit))
         return {'items': [{'id': account.id, 'username': account.username, 'role': account.role, 'created_at': account.created_at} for account in users], 'total': db.scalar(select(func.count()).select_from(User))}
+
+@router.post('/password')
+def change_password(body: PasswordChangeInput, request: Request, response: Response):
+    access = require_access(request)
+    if access is None:
+        raise HTTPException(404, 'Authentication is disabled')
+    with request.app.state.fs.lock, request.app.state.db() as db:
+        session = current_session(request, db)
+        if session is None:
+            raise HTTPException(401, 'Please sign in')
+        attempts = request.app.state.login_attempts['password:' + str(access['id'])]
+        now = time.monotonic()
+        while attempts and now - attempts[0] > 300:
+            attempts.popleft()
+        if len(attempts) >= 5:
+            raise HTTPException(429, 'Too many attempts. Try again in five minutes')
+        attempts.append(now)
+        user = db.get(User, session.user_id)
+        if user is None or not verify_password(body.current_password, user.password_hash):
+            raise HTTPException(400, 'Current password is incorrect')
+        if body.current_password == body.new_password:
+            raise HTTPException(400, 'Choose a different password')
+        user.password_hash = hasher.hash(body.new_password)
+        token, csrf = secrets.token_urlsafe(48), secrets.token_urlsafe(32)
+        db.execute(delete(Session).where(Session.user_id == user.id))
+        settings = request.app.state.settings
+        db.add(Session(user_id=user.id, session_hash=digest(token), csrf_token=csrf, expires_at=time.time() + settings.session_hours * 3600))
+        db.commit()
+        attempts.clear()
+        response.set_cookie('rootdrive_session', token, httponly=True, secure=settings.cookie_secure, samesite='strict', max_age=settings.session_hours * 3600, path='/')
+        return {'ok': True, 'csrf_token': csrf}

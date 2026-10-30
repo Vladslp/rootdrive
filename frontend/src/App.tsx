@@ -87,6 +87,7 @@ import {
   VersionsDialog,
   type Modal,
 } from "./components/FileDialogs";
+import { PasswordSettings } from "./components/PasswordSettings";
 import { UsersSettings } from "./components/UsersSettings";
 import { UploadLimitSettings } from "./components/UploadLimitSettings";
 import { UploadQueue } from "./components/UploadQueue";
@@ -1348,6 +1349,7 @@ export default function App() {
                   notify("Upload limit updated");
                 }}
               />
+              <PasswordSettings account={account} changed={loadAccount} notify={notify} />
               <UsersSettings account={account} notify={notify} />
               <section className="settings-section">
                 <h3>Server</h3>

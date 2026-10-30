@@ -1611,7 +1611,7 @@ export default function App() {
               Version history
             </button>
           )}
-          {contextEntry.type === "file" && account.shares_enabled && (
+          {account.shares_enabled && (
             <button
               role="menuitem"
               onClick={() => chooseAction("share", [contextEntry])}

@@ -143,3 +143,16 @@ class ContentHash(Base):
     path: Mapped[str] = mapped_column(String, primary_key=True)
     signature: Mapped[str] = mapped_column(String)
     digest: Mapped[str] = mapped_column(String)
+
+
+class ShareProtection(Base):
+    __tablename__ = 'share_protections'
+    share_id: Mapped[str] = mapped_column(ForeignKey('shares.id', ondelete='CASCADE'), primary_key=True)
+    password_hash: Mapped[str] = mapped_column(String)
+
+
+class ShareGrant(Base):
+    __tablename__ = 'share_grants'
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    share_id: Mapped[str] = mapped_column(ForeignKey('shares.id', ondelete='CASCADE'), index=True)
+    expires_at: Mapped[float] = mapped_column(Float)

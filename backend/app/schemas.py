@@ -49,7 +49,8 @@ class UserInput(LoginInput):
 
 
 class ShareInput(BaseModel):
-    path: str
+    password: str | None = Field(default=None, min_length=8, max_length=1024)
+    path: str = Field(max_length=4096)
     expires_hours: int | None = Field(default=24, ge=1, le=8760)
 
 

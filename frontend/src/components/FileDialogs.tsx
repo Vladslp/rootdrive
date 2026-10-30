@@ -824,6 +824,7 @@ export function ShareDialog({
   close: () => void;
 }) {
   const [hours, setHours] = useState("24");
+  const [password, setPassword] = useState("");
   const [link, setLink] = useState("");
   const [copied, setCopied] = useState(false);
   const linkInput = useRef<HTMLInputElement>(null);
@@ -836,6 +837,7 @@ export function ShareDialog({
       const result = await api<{ url: string }>("/shares", "POST", {
         path: entry.path,
         expires_hours: hours ? Number(hours) : null,
+        password: password || undefined,
       });
       setLink(location.origin + result.url);
     } catch (error) {
@@ -845,9 +847,9 @@ export function ShareDialog({
     }
   }
   return (
-    <Dialog title="Share file" close={() => { if (!busy) close(); }}>
+    <Dialog title={entry.type === "folder" ? "Share folder" : "Share file"} close={() => { if (!busy) close(); }}>
       <p className="share-warning">
-        Anyone with the link can download this file.
+        Anyone with the link and its password can download shared files.
       </p>
       <strong className="break-word">{entry.name}</strong>
       {link ? (
@@ -866,17 +868,14 @@ export function ShareDialog({
           </select>
         </label>
       )}
-      {error && (
-        <p className="error-text" role="alert">
-          {error}
-        </p>
-      )}
+      {!link && <label className="field-label">Password <span className="muted">Optional · 8 characters minimum</span><input type="password" autoComplete="new-password" minLength={8} maxLength={1024} value={password} onChange={(event) => setPassword(event.target.value)} /></label>}
+      {error && <p className="error-text" role="alert">{error}</p>}
       <div className="dialog-actions">
         <button className="button secondary" onClick={close} disabled={busy}>
           Close
         </button>
         {!link && (
-          <button className="button primary" onClick={create} disabled={busy}>
+          <button className="button primary" onClick={create} disabled={busy || (password.length > 0 && password.length < 8)}>
             Create link
           </button>
         )}

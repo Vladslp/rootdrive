@@ -1,3 +1,9 @@
+# Update 1.54: Secure Sharing
+
+Share folders with a public browser view and protect any link with a password. Expiring HttpOnly grants, rate limits and scoped paths protect access.
+
+---
+
 # Update 1.53: Smart Search
 
 Find text inside notes, code and Office documents. Detect identical files using cached, streamed SHA-256 hashes; scans never delete originals.

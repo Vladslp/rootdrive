@@ -8,4 +8,4 @@ export const smartFolders = [
 ] as const;
 
 export type SmartFolder = typeof smartFolders[number]["id"];
-export type View = "gallery" | "files" | "favorites" | "tag" | "smart" | "shares" | "trash" | "storage" | "settings";
+export type View = "discovery" | "gallery" | "files" | "favorites" | "tag" | "smart" | "shares" | "trash" | "storage" | "settings";

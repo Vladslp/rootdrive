@@ -10,7 +10,7 @@ from .config import ROOT, Settings
 from .database import ApplicationSetting, create_database
 from .routers import auth, editor, files, shares, uploads, workspace, settings as server_settings
 from .release import RELEASE
-from .routers import archives, gallery
+from .routers import archives, gallery, discovery
 from .services.bootstrap import initialize_workspace
 from .services.filesystem import Filesystem
 from .services.previews import Previews
@@ -100,6 +100,7 @@ def create_app(settings: Settings | None = None):
     def health():
         return {'status': 'ok', **RELEASE, 'name': 'RootDrive', 'release': RELEASE['name']}
 
+    app.include_router(discovery.router)
     app.include_router(gallery.router)
     app.include_router(archives.router)
     app.include_router(auth.router)

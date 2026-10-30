@@ -101,6 +101,7 @@ import { UploadButton } from "./components/UploadButton";
 import { TagDeleteDialog } from "./components/TagDeleteDialog";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
+const Discovery = lazy(() => import("./components/Discovery"));
 const PhotoGallery = lazy(() => import("./components/PhotoGallery"));
 const EditorDialog = lazy(() => import("./components/EditorDialog"));
 
@@ -656,6 +657,7 @@ export default function App() {
       ? tags.find((tag) => tag.id === activeTag)?.name || "Tag"
       : (
           {
+            discovery: "Discover",
             gallery: "Photos",
             files: "My files",
             favorites: "Favorites",
@@ -739,6 +741,7 @@ export default function App() {
           {nav("files", "My files", <HardDrive size={19} />)}
           {nav("favorites", "Favorites", <Star size={19} />)}
           {nav("gallery", "Photos", <LayoutGrid size={19} />)}
+          {nav("discovery", "Discover", <Search size={19} />)}
           {account.shares_enabled &&
             nav("shares", "Shared links", <Link size={19} />)}
           {nav("trash", "Trash", <Trash2 size={19} />)}
@@ -1344,6 +1347,7 @@ export default function App() {
                 </button>
               </div>
             )}
+          {view === "discovery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><Discovery open={open} locate={(entry) => navigate("files", entry.path.split("/").slice(0, -1).join("/"))} /></Suspense>}
           {view === "gallery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><PhotoGallery /></Suspense>}
           {view === "storage" && (
             <Storage stats={stats} error={statsError} navigate={navigate} />

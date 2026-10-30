@@ -104,3 +104,7 @@ Built as a university Python project: **FastAPI** for the API, **Python filesyst
 Photos opens a gallery grouped by modification date. Select photos to add them to a virtual album; deleting an album leaves the original files intact. Use arrow keys in the viewer or start a slideshow.
 
 Open a ZIP to browse or download its members, or extract selected items into a new folder. Unsafe paths, links, encrypted archives and excessive expansion are rejected. The default extraction budget is 10 GB (`MAX_ARCHIVE_EXPANDED_MB`). Copy/cut/paste work from the context menu and with Ctrl/Cmd+C, X and V. Drag a file onto a folder to move it.
+
+### Find inside files
+
+Discover searches UTF-8 notes, source code, DOCX and ODT text. Each search checks up to 2,000 supported files for 15 seconds; text files over 2 MB and unsupported documents are skipped and reported. Narrow the folder for large libraries. Duplicate scans compare SHA-256 contents with a SQLite cache, use a 30-second / 100,000-file budget and display partial results when reached. Nothing is deleted automatically.

@@ -136,3 +136,10 @@ class AlbumItem(Base):
     __tablename__ = 'album_items'
     album_id: Mapped[str] = mapped_column(ForeignKey('albums.id', ondelete='CASCADE'), primary_key=True)
     item_id: Mapped[str] = mapped_column(ForeignKey('item_metadata.id', ondelete='CASCADE'), primary_key=True)
+
+
+class ContentHash(Base):
+    __tablename__ = 'content_hashes'
+    path: Mapped[str] = mapped_column(String, primary_key=True)
+    signature: Mapped[str] = mapped_column(String)
+    digest: Mapped[str] = mapped_column(String)

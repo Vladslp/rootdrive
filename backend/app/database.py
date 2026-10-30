@@ -122,3 +122,17 @@ class ApplicationSetting(Base):
     __tablename__ = 'application_settings'
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(String)
+
+
+class Album(Base):
+    __tablename__ = 'albums'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    owner: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class AlbumItem(Base):
+    __tablename__ = 'album_items'
+    album_id: Mapped[str] = mapped_column(ForeignKey('albums.id', ondelete='CASCADE'), primary_key=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey('item_metadata.id', ondelete='CASCADE'), primary_key=True)

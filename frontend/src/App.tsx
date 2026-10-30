@@ -101,6 +101,7 @@ import { UploadButton } from "./components/UploadButton";
 import { TagDeleteDialog } from "./components/TagDeleteDialog";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
+const PhotoGallery = lazy(() => import("./components/PhotoGallery"));
 const EditorDialog = lazy(() => import("./components/EditorDialog"));
 
 type Theme = "light" | "dark";
@@ -655,6 +656,7 @@ export default function App() {
       ? tags.find((tag) => tag.id === activeTag)?.name || "Tag"
       : (
           {
+            gallery: "Photos",
             files: "My files",
             favorites: "Favorites",
             shares: "Shared links",
@@ -736,6 +738,7 @@ export default function App() {
         <nav aria-label="Main navigation">
           {nav("files", "My files", <HardDrive size={19} />)}
           {nav("favorites", "Favorites", <Star size={19} />)}
+          {nav("gallery", "Photos", <LayoutGrid size={19} />)}
           {account.shares_enabled &&
             nav("shares", "Shared links", <Link size={19} />)}
           {nav("trash", "Trash", <Trash2 size={19} />)}
@@ -1341,6 +1344,7 @@ export default function App() {
                 </button>
               </div>
             )}
+          {view === "gallery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><PhotoGallery /></Suspense>}
           {view === "storage" && (
             <Storage stats={stats} error={statsError} navigate={navigate} />
           )}

@@ -1,3 +1,9 @@
+# Update 1.52: Photo Gallery
+
+Browse photos by date, use arrow keys or a slideshow, and organise virtual albums without moving the originals.
+
+---
+
 # Update 1.51: Archive Tools
 
 Browse ZIP folders, download individual members and extract all or selected items into a new folder. Copy/cut/paste files and folders through the file menu and Ctrl/Cmd+C/X/V; drop files onto folder cards to move them. Copies never overwrite existing names. Unsafe ZIP paths, links, duplicate names and excessive expanded sizes are rejected. RootDrive now displays its numbered update and release name without the MVP label.

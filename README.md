@@ -99,3 +99,8 @@ Built as a university Python project: **FastAPI** for the API, **Python filesyst
 
 [Setup, security, tests and limitations →](docs/GUIDE.md)
 
+### Albums and archives
+
+Photos opens a gallery grouped by modification date. Select photos to add them to a virtual album; deleting an album leaves the original files intact. Use arrow keys in the viewer or start a slideshow.
+
+Open a ZIP to browse or download its members, or extract selected items into a new folder. Unsafe paths, links, encrypted archives and excessive expansion are rejected. The default extraction budget is 10 GB (`MAX_ARCHIVE_EXPANDED_MB`). Copy/cut/paste work from the context menu and with Ctrl/Cmd+C, X and V. Drag a file onto a folder to move it.

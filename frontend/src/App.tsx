@@ -87,6 +87,7 @@ import {
   VersionsDialog,
   type Modal,
 } from "./components/FileDialogs";
+import { ConnectionStatus } from "./components/ConnectionStatus";
 import { PasswordSettings } from "./components/PasswordSettings";
 import { UsersSettings } from "./components/UsersSettings";
 import { UploadLimitSettings } from "./components/UploadLimitSettings";
@@ -241,6 +242,11 @@ export default function App() {
     window.addEventListener("rootdrive:unauthorized", invalid);
     return () => window.removeEventListener("rootdrive:unauthorized", invalid);
   }, [loadAccount]);
+  useEffect(() => {
+    const reconnected = () => { void loadAccount(); refresh(); void loadTags().catch((error) => notify(error.message)); };
+    window.addEventListener("rootdrive:reconnected", reconnected);
+    return () => window.removeEventListener("rootdrive:reconnected", reconnected);
+  }, [loadAccount, refresh, loadTags, notify]);
   useEffect(() => {
     if (ready) void loadTags().catch((error) => notify(error.message));
   }, [ready, loadTags, notify]);
@@ -419,9 +425,9 @@ export default function App() {
         tagManager ||
         tagToDelete ||
         tagContext ||
-        (event.target as HTMLElement)?.closest(
+        (event.target instanceof Element && event.target.closest(
           "input:not([type=checkbox]),textarea,select,[contenteditable],.cm-editor",
-        )
+        ))
       )
         return;
       if (
@@ -856,10 +862,7 @@ export default function App() {
                 {account.user.username[0].toUpperCase()}
               </button>
             )}
-            <span className="connection-state">
-              <i />
-              Running
-            </span>
+            <ConnectionStatus />
           </div>
         </header>
         <div

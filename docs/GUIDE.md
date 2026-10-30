@@ -330,13 +330,33 @@ Trash supports the same desktop selection rectangle and mobile checkboxes as My 
 | Documents | Text, Markdown, PDF, Office, OpenDocument, CSV, EPUB and Apple document formats | Name |
 | Large files | At least 100 MiB, displayed as 100 MB in the interface | Largest first |
 
-Photo classification uses the filename extension; it does not promise a preview/editor for every camera RAW format. Recent files use filesystem modification time, not upload or creation time. These four rules are built in; custom saved rules are not included.
+Photo classification uses the filename extension; it does not promise a preview/editor for every camera RAW format. Recent files use filesystem modification time, not upload or creation time. The four views are built in. Recent files offers 7/30/90-day periods; Large files offers 10 MB, 100 MB, 1 GB and 10 GB thresholds. These preferences are remembered in this browser. Arbitrary custom saved rules are not included.
 
-`GET /api/smart-files?kind=recent|photos|documents|large` uses the same authentication and storage restrictions as ordinary listings. It supports `q`, `sort`, `direction`, `offset` and `limit` (up to 200). Files in Trash, internal directories, symlinks and `.DS_Store` are excluded. Scans read filesystem metadata only and keep a bounded sorted page in memory. At most twelve raw result pages are cached for fifteen seconds; application writes invalidate them. Favorites and tags are enriched for the current user after reading the cache. External filesystem edits can take up to fifteen seconds to appear. Initial scans remain proportional to the tree size; no background indexer or polling loop is added.
+`GET /api/smart-files?kind=recent|photos|documents|large` uses the same authentication and storage restrictions as ordinary listings. It supports `q`, `sort`, `direction`, `offset` and `limit` (up to 200), plus `recent_days` (1–365) and `min_size_mb` (1–1048576). Files in Trash, internal directories, symlinks and `.DS_Store` are excluded. Scans read filesystem metadata only and keep a bounded sorted page in memory. At most twelve raw result pages are cached for fifteen seconds; application writes invalidate them. Favorites and tags are enriched for the current user after reading the cache. External filesystem edits can take up to fifteen seconds to appear. Initial scans remain proportional to the tree size; no background indexer or polling loop is added.
 
 Open **Quick commands** from the top bar or press **Cmd+K / Ctrl+K** outside an editor/dialog. Type to filter commands or search filenames across all folders. File searches start at two characters, are debounced and return at most eight results; obsolete requests are aborted. No file-search request runs while the panel is closed or its input is empty. Use Up/Down and Enter, or click/tap a result. Escape closes the panel and returns focus to its trigger. The panel is also available on mobile through its top-bar icon.
 
-Commands open normal views, create a file/folder, upload files, refresh or switch theme. Creation and upload target the current physical directory; from a virtual view or Settings they target My files. A single selected file/folder also exposes Rename and Properties. Existing dialogs and backend validations perform the actual operations. There are no quick commands for permanent deletion.
+Commands open normal views, create a file/folder, upload files, refresh or switch theme. Creation and upload target the current physical directory; from a virtual view or Settings they target My files. A single selected file/folder also exposes Rename and Properties. Existing dialogs and backend validations perform the actual operations. There are no quick commands for permanent deletion. The last five general command IDs appear first when the palette opens; **Clear history** removes them. Each username/shared workspace has its own browser-local list. File-specific actions, paths, filenames and search queries are not saved.
+
+### Keyboard, navigation and selection
+
+F2 renames one selected file/folder; Delete opens Move to Trash confirmation. Shortcuts ignore text entry, repeated key events, active dialogs, pending actions and Trash. They do not permanently delete files. **Open file location** in the context menu or palette opens the physical parent folder, resets sorting to name ascending and selects the original item. `GET /api/files/location?path=…&limit=60` computes the target page directly without fetching all intervening pages; access and path checks are the same as downloads.
+
+Sort field and direction persist in browser preferences for ordinary file views, each smart folder and Trash. Unsupported saved values fall back to safe defaults. The selection toolbar shows total size; files nested inside a selected folder are counted once. Trash uses independent item IDs, so separate deleted copies remain separate in totals.
+
+### Trash filtering and batch restoration
+
+Trash searches filenames and original paths using an escaped, case-insensitive SQLite substring query (SQLite's built-in lowercasing primarily covers ASCII). Sort by deletion date, original path or size; search and pagination run on the backend. The revision always covers the whole Trash. **Remove all** is disabled while a filter is active, and its existing confirmation remains mandatory after clearing the filter.
+
+Select items and choose **Restore selected**. `POST /api/trash/restore/batch` accepts 1–200 IDs, deduplicates them and restores selected parents before children. All selected items restore in one metadata transaction; a path conflict, missing parent, unavailable item or database failure rolls back files and metadata together. Existing destinations are never overwritten. Single-item restoration remains available.
+
+### Account password changes
+
+With authentication enabled, every signed-in user can open Settings → Account security → Change password. `POST /api/auth/password` requires the current password and a new 10–1024-character password, the session cookie and CSRF token. Attempts are limited to five per user per five minutes. Successful changes rotate the current HttpOnly/SameSite cookie and CSRF token, retain this session with the new token, and revoke all other sessions for that user. The Argon2 hash and sessions change in one transaction; a commit failure keeps the old password and session. The browser clears password fields on success/cancel and never persists them. No password-change endpoint is available when authentication is disabled.
+
+### Server availability
+
+The header checks server availability after 45 seconds without successful API traffic while the page is visible and online. Routine successful checks do not animate or reload files. Transport failures show **Retry connection**; failed health checks retry after five seconds and time out after eight. Checks pause while hidden/offline and abort on unmount. Focus, restored connectivity and explicit retry can check immediately. Intentional request cancellation does not report a lost server. A successful reconnection refreshes account, tags and file listings without closing an open editor. Running indicates a responding server, not a guarantee that every storage operation will succeed.
 
 ## Folder details
 

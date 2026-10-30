@@ -4,7 +4,7 @@ Keep your files on your own computer. Open them from any browser.
 
 No cloud account. No subscription. No Docker.
 
-**[Start](#start-here) · [Update 1.2](docs/UPDATES.md) · [Full guide](docs/GUIDE.md)**
+**[Start](#start-here) · [Updates](docs/UPDATES.md) · [Full guide](docs/GUIDE.md)**
 
 ## Your files
 
@@ -21,7 +21,7 @@ Smart folders collect recent files, photos, documents and files of 100 MB or mor
 
 ![Smart folders show documents from every folder](docs/screenshots/smart-folders.png)
 
-Press **⌘K / Ctrl+K** to find a file, jump to a section or run a command.
+Press **⌘K / Ctrl+K** to find a file, jump to a section or run a command. **F2** renames; **Delete** opens the Trash confirmation. Sorting and recent commands are remembered.
 
 ![Quick commands in the dark theme](docs/screenshots/quick-commands.png)
 
@@ -66,6 +66,12 @@ Start a note, a document or a code file without leaving the panel.
   <img src="docs/screenshots/new-file.png" alt="New file dialog with text, document and programming language options" width="620">
 </p>
 
+## Bring files back
+
+Search and sort Trash. Select several files to restore them together.
+
+![Selected Trash files with restoration and size totals](docs/screenshots/trash-selection.png)
+
 ## See your space
 
 Files, trash, versions, system usage and free space — all together.
@@ -85,6 +91,7 @@ Files, trash, versions, system usage and free space — all together.
 
 - Files stay in `storage/` during a local installation. Documents, Photos, Videos and Audio are created once on first launch.
 - Login and public links are optional and off by default. Users share one workspace.
+- Trash supports search, sorting and restoring multiple selected items. Signed-in users can change their password in Settings.
 - Public links let anyone with the link download the file.
 - For LAN access, set `HOST=0.0.0.0` in `.env` and restart.
 

@@ -9,7 +9,7 @@ import { build } from "esbuild";
 import { JSDOM } from "jsdom";
 import { createElement as h, act } from "react";
 
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost" });
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost", pretendToBeVisual: true });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, IS_REACT_ACT_ENVIRONMENT: true, requestAnimationFrame: (callback) => setTimeout(callback, 0), cancelAnimationFrame: clearTimeout });
 Object.defineProperty(globalThis, "localStorage", { value: window.localStorage, configurable: true });
 window.scrollTo = () => {};
@@ -38,7 +38,8 @@ const { createRoot } = await import("react-dom/client");
 const tag = { id: "tag-1", name: "Travel", color: "blue" };
 const folder = { name: "Folder", path: "Folder", type: "folder", size: 12, modified: 1, child_count: 1, tags: [tag] };
 const photo = { name: "photo.png", path: "photo.png", type: "file", size: 12, modified: 1, mime: "image/png" };
-let host, root, requests, delayListing, additionalFiles;
+let host, root, requests, delayListing, additionalFiles, runtimeErrors = [];
+window.addEventListener("error", (event) => runtimeErrors.push(event.error?.stack || event.message));
 function button(label) {
   const found = [...host.querySelectorAll("button")].find((node) => (node.getAttribute("aria-label") || node.textContent.trim()) === label);
   assert.ok(found, label);
@@ -49,6 +50,7 @@ function heading() { return host.querySelector("h1")?.textContent; }
 beforeEach(async () => {
   window.localStorage.clear();
   requests = [];
+  runtimeErrors = [];
   globalThis.cardRenders = [];
   delayListing = null;
   additionalFiles = [];
@@ -74,7 +76,7 @@ beforeEach(async () => {
   root = createRoot(host);
   await act(async () => root.render(h(App)));
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); assert.deepEqual(runtimeErrors, []); });
 after(() => window.close());
 for (const layout of ["Grid view", "List view"]) {
   test(`one native open control navigates the folder in ${layout}`, async () => {
@@ -583,4 +585,15 @@ test("password settings verify confirmation before submitting and rotate CSRF af
   assert.deepEqual(requests.find(({ url }) => url.pathname === "/api/auth/password").body, { current_password: "old-password", new_password: "new-password-123" });
   assert.equal(host.querySelector('form[aria-label="Change password"]'), null);
   assert.match(host.querySelector(".toast-stack").textContent, /Password changed/);
+});
+
+test("server status reports transport loss and refreshes files after a successful retry", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => url === "/api/health" ? { ok: true, json: async () => ({ status: "ok" }) } : originalFetch(url, options);
+  const count = requests.filter(({ url }) => url.pathname === "/api/files").length;
+  await act(async () => window.dispatchEvent(new window.Event("rootdrive:connection-lost")));
+  assert.ok(button("Retry connection"));
+  await click("Retry connection");
+  assert.ok(button("Check server connection"));
+  assert.ok(requests.filter(({ url }) => url.pathname === "/api/files").length > count);
 });

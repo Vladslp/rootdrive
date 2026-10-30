@@ -44,11 +44,13 @@ export type Shared = {
   created_at: number;
 };
 export class APIError extends Error {
+  status: number;
   constructor(
     message: string,
-    public status: number,
+    status: number,
   ) {
     super(message);
+    this.status = status;
   }
 }
 let csrf = "";
@@ -61,7 +63,9 @@ export async function api<T>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch("/api" + url, {
+  let response: Response;
+  try {
+    response = await fetch("/api" + url, {
     method,
     signal,
     headers: {
@@ -70,10 +74,15 @@ export async function api<T>(
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  } catch (error) {
+    if (!signal?.aborted) window.dispatchEvent(new window.Event("rootdrive:connection-lost"));
+    throw error;
+  }
+  window.dispatchEvent(new window.Event("rootdrive:connection-ok"));
   const data = await response.json();
   if (!response.ok) {
     if (response.status === 401)
-      window.dispatchEvent(new Event("rootdrive:unauthorized"));
+      window.dispatchEvent(new window.Event("rootdrive:unauthorized"));
     throw new APIError(
       data.error?.message || "Something went wrong",
       response.status,

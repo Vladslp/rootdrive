@@ -1,3 +1,13 @@
+# Update 1.12: Server connection status
+
+The header shows real connection state, offers retry after transport failures, and refreshes account/files after reconnection. Health checks run at most once per 45 idle seconds while visible and online; failed checks retry after five seconds and time out after eight. Hidden/offline pages and unmounted views stop checks. Normal successful API traffic resets the idle timer.
+
+Validation: **240 backend tests**, **86 frontend tests**, a successful production build, and desktop/mobile browser checks including an actual server stop/restart.
+
+![Trash selection and bulk restoration](screenshots/trash-selection.png)
+
+---
+
 # Update 1.11: Account password change
 
 Signed-in users can change their own password in Settings after confirming the current password. Passwords use Argon2; the operation requires CSRF, is rate-limited, rotates the current cookie/security token and revokes other sessions. The form stays hidden when sign-in is disabled.
@@ -87,3 +97,5 @@ October 27, 2026
 Restart RootDrive after updating. Set `CREATE_DEFAULT_FOLDERS=false` in `.env` if you prefer an empty workspace.
 
 Validation: 205 backend tests, 51 frontend tests and the TypeScript/Vite production build passed. The ZIP workflow was also checked in the browser using isolated demo files.
+
+The Update 1.3–1.12 series contains ten separate feature commits. Commit author/committer timestamps were explicitly assigned to the requested schedule; they are not a record of actual implementation times.

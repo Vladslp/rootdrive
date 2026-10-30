@@ -61,3 +61,9 @@
 @media (max-width: 600px) { .trash-filterbar { flex-wrap: wrap; } .trash-filterbar .search-field { flex-basis: 100%; max-width: none; } }
 .password-form { display: grid; gap: 16px; max-width: 520px; }
 .password-form > p { font-size: 12px; margin: 0; }
+.connection-unavailable, .connection-offline { color: var(--danger); }
+.connection-unavailable i, .connection-offline i { background: var(--danger); }
+.connection-checking i { background: var(--muted); }
+.connection-state:disabled { background: transparent; opacity: 1; }
+@media (max-width: 600px) { .connection-state { max-width: 104px; padding-inline: 4px; font-size: 10px; } }
+@media (max-width: 600px) { .trash-toolbar > .button { grid-row: auto; } }

@@ -9,7 +9,7 @@ import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from
 import { tags } from "@lezer/highlight";
 
 export type CodeEditorHandle = { value: () => string };
-type Props = { text: string; format: string; wrap: boolean; disabled: boolean; changed: (dirty: boolean) => void };
+type Props = { text: string; format: string; wrap: boolean; disabled: boolean; changed: (dirty: boolean) => void; snapshot?: (text: string) => void };
 
 const syntax = HighlightStyle.define([
   { tag: [tags.keyword, tags.modifier, tags.operatorKeyword], color: "var(--code-keyword)" },
@@ -38,11 +38,13 @@ async function language(format: string): Promise<Extension> {
   return [];
 }
 
-const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ text, format, wrap, disabled, changed }, ref) {
+const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ text, format, wrap, disabled, changed, snapshot }, ref) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const callback = useRef(changed);
   callback.current = changed;
+  const snapshotCallback = useRef(snapshot);
+  snapshotCallback.current = snapshot;
   const [position, setPosition] = useState({ line: 1, column: 1, lines: 1 });
   const [syntaxError, setSyntaxError] = useState(false);
   const compartments = useRef({ language: new Compartment(), wrap: new Compartment(), editing: new Compartment() });
@@ -51,6 +53,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ tex
     if (!host.current) return;
     let active = true;
     let dirty = false;
+    let previewTimer: ReturnType<typeof setTimeout> | undefined;
     const slots = compartments.current;
     const initial = EditorState.create({ doc: text }).doc;
     const editor = new EditorView({
@@ -72,6 +75,8 @@ const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ tex
             const line = update.state.doc.lineAt(caret);
             setPosition({ line: line.number, column: caret - line.from + 1, lines: update.state.doc.lines });
             if (update.docChanged) {
+              clearTimeout(previewTimer);
+              if (snapshotCallback.current) previewTimer = setTimeout(() => { if (active) snapshotCallback.current?.(editor.state.doc.toString()); }, 400);
               const next = !update.state.doc.eq(initial);
               if (next !== dirty) {
                 dirty = next;
@@ -88,7 +93,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, Props>(function CodeEditor({ tex
     language(format).then((extension) => {
       if (active) editor.dispatch({ effects: slots.language.reconfigure(extension) });
     }).catch(() => { if (active) setSyntaxError(true); });
-    return () => { active = false; view.current = null; editor.destroy(); };
+    return () => { active = false; clearTimeout(previewTimer); view.current = null; editor.destroy(); };
   }, [text, format]);
   useEffect(() => {
     view.current?.dispatch({ effects: compartments.current.wrap.reconfigure(wrap ? EditorView.lineWrapping : []) });

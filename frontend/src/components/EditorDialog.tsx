@@ -29,6 +29,7 @@ import {
 } from "../services/editor";
 import { Dialog } from "./Dialog";
 import { PhotoEditor } from "./PhotoEditor";
+import { MarkdownPreview } from "./MarkdownPreview";
 import CodeEditor, { type CodeEditorHandle } from "./CodeEditor";
 
 const PDFEditor = lazy(() => import("./PDFEditor"));
@@ -90,6 +91,8 @@ export default function EditorDialog({
   const [textDirty, setTextDirty] = useState(false);
   const [editorVersion, setEditorVersion] = useState(0);
   const codeEditor = useRef<CodeEditorHandle>(null);
+  const [markdown, setMarkdown] = useState(false);
+  const [markdownText, setMarkdownText] = useState("");
   const loadData = useCallback((value: EditorData) => {
     const next = {
       text: value.text || "",
@@ -153,16 +156,7 @@ export default function EditorDialog({
             : data.kind === "pdf"
               ? { pages }
               : {
-                  paragraphs: paragraphs
-                    .filter(
-                      (item) =>
-                        item.editable &&
-                        item.text !==
-                          data.paragraphs?.find(
-                            (original) => original.id === item.id,
-                          )?.text,
-                    )
-                    .map(({ id, text }) => ({ id, text })),
+                  paragraphs: paragraphs.filter((item) => item.editable && JSON.stringify(item) !== JSON.stringify(data.paragraphs?.find((original) => original.id === item.id))).map(({ id, text, bold, italic, style, append }) => ({ id, text, bold, italic, style, append })),
                 };
       const result = await api<EditorData & { entry: Entry }>(
         "/editor",
@@ -261,6 +255,7 @@ export default function EditorDialog({
           {data && (
             <fieldset disabled={busy} className="editor-workspace">
               {data.kind === "text" && (
+                <div><div className="markdown-toggle">{["md", "markdown"].includes(data.format || "") && <button type="button" className="button secondary" aria-pressed={markdown} onClick={() => { setMarkdownText(codeEditor.current?.value() ?? text); setMarkdown(!markdown); }}>Markdown preview</button>}</div><div className={markdown ? "markdown-workspace" : ""}>
                 <CodeEditor
                   key={editorVersion}
                   ref={codeEditor}
@@ -269,7 +264,10 @@ export default function EditorDialog({
                   wrap={wrap}
                   disabled={busy}
                   changed={setTextDirty}
+                  snapshot={markdown ? setMarkdownText : undefined}
                 />
+                {markdown && <MarkdownPreview text={markdownText} />}
+                </div></div>
               )}
               {data.kind === "photo" && (
                 <PhotoEditor
@@ -285,18 +283,18 @@ export default function EditorDialog({
                 <div className="document-editor">
                   <div className="document-note">
                     <AlignLeft size={16} />
-                    Edit paragraph text. Layout and embedded objects stay in the
-                    document.
+                    Format whole paragraphs. Complex embedded content is preserved.
                   </div>
                   <div className="document-paper">
                     {paragraphs.map((item) => (
                       <div
                         className={
                           "document-paragraph " +
-                          (item.heading ? "document-heading" : "")
+                          (item.style?.startsWith("heading") ? "document-heading" : "") + (item.bold ? " paragraph-bold" : "") + (item.italic ? " paragraph-italic" : "") + (item.style === "bullet" || item.style === "number" ? " paragraph-list" : "")
                         }
                         key={item.id}
                       >
+                        {item.editable && <div className="paragraph-toolbar"><select aria-label={"Style for paragraph " + (item.id + 1)} value={item.style || "body"} onChange={(event) => setParagraphs((current) => current.map((paragraph) => paragraph.id === item.id ? { ...paragraph, style: event.target.value as Paragraph["style"] } : paragraph))}>{[["body", "Text"], ["heading1", "Heading 1"], ["heading2", "Heading 2"], ["bullet", "Bullet list"], ["number", "Numbered list"]].map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select><button type="button" aria-label={"Bold paragraph " + (item.id + 1)} aria-pressed={!!item.bold} onClick={() => setParagraphs((current) => current.map((paragraph) => paragraph.id === item.id ? { ...paragraph, bold: !paragraph.bold } : paragraph))}><strong>B</strong></button><button type="button" aria-label={"Italic paragraph " + (item.id + 1)} aria-pressed={!!item.italic} onClick={() => setParagraphs((current) => current.map((paragraph) => paragraph.id === item.id ? { ...paragraph, italic: !paragraph.italic } : paragraph))}><em>I</em></button></div>}
                         {item.editable ? (
                           <ParagraphInput
                             paragraph={item}
@@ -318,6 +316,7 @@ export default function EditorDialog({
                         )}
                       </div>
                     ))}
+                    <button type="button" className="button secondary" disabled={paragraphs.length >= 3000} onClick={() => setParagraphs((current) => [...current, { id: current.length, text: "", editable: true, heading: false, bold: false, italic: false, style: "body", append: true }])}>Add paragraph</button>
                   </div>
                 </div>
               )}

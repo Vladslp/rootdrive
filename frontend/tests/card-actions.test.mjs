@@ -59,6 +59,7 @@ beforeEach(async () => {
     requests.push({ url, method: options.method || "GET", body: options.body && JSON.parse(options.body) });
     let data = {};
     if (url.pathname === "/api/auth/me") data = { auth_enabled: false, shares_enabled: true, max_upload_size_mb: 2048, csrf_token: null, user: null };
+    else if (url.pathname === "/api/library/pins") data = { items: [] };
     else if (url.pathname === "/api/tags") data = { items: [tag] };
     else if (url.pathname === "/api/uploads") data = { items: [] };
     else if (url.pathname === "/api/storage/stats") data = { file_count: 1, stored_bytes: 12, disk_total: 1000, disk_free: 800, disk_used: 200, disk_percent: 20, system_bytes: 188, trash_bytes: 0, versions_bytes: 0, uploads_bytes: 0, cache_bytes: 0, exports_bytes: 0, categories: { images: 12, videos: 0, documents: 0, other: 0 } };
@@ -633,4 +634,11 @@ test("dropping a file on a folder sends a real move operation", async () => {
   Object.defineProperty(drop, "dataTransfer", { value: data });
   await act(async () => host.querySelector('[data-selection-path="Folder"]').dispatchEvent(drop));
   assert.deepEqual(requests.find(({ url }) => url.pathname === "/api/files/batch/move").body, { paths: ["photo.png"], destination: "Folder" });
+});
+
+
+test("pin folder menu persists the selected folder through the backend", async () => {
+  await click("Actions for Folder");
+  await click("Pin to sidebar");
+  assert.ok(requests.some((request) => request.url.pathname === "/api/library/pins" && request.method === "POST" && request.body.path === "Folder"));
 });

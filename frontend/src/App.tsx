@@ -34,6 +34,8 @@ import {
   FolderPlus,
   HardDrive,
   History,
+  Music2,
+  Pin,
   Info,
   LayoutGrid,
   Link,
@@ -71,6 +73,7 @@ import {
 } from "./services/api";
 import { selectionSize } from "./services/selection";
 import release from "../../backend/app/release.json";
+import { PinnedFolders } from "./components/PinnedFolders";
 import { ArchiveDialog } from "./components/ArchiveDialog";
 import { isPhoto } from "./components/FileArtwork";
 import { Art, kindOf } from "./components/Art";
@@ -102,6 +105,7 @@ import { UploadButton } from "./components/UploadButton";
 import { TagDeleteDialog } from "./components/TagDeleteDialog";
 import { droppedFiles, useUploads } from "./hooks/useUploads";
 
+const AudioLibrary = lazy(() => import("./components/AudioLibrary"));
 const PhotoStudio = lazy(() => import("./components/PhotoStudio"));
 const Discovery = lazy(() => import("./components/Discovery"));
 const PhotoGallery = lazy(() => import("./components/PhotoGallery"));
@@ -659,6 +663,7 @@ export default function App() {
       ? tags.find((tag) => tag.id === activeTag)?.name || "Tag"
       : (
           {
+            audio: "Audio",
             discovery: "Discover",
             gallery: "Photos",
             files: "My files",
@@ -744,10 +749,12 @@ export default function App() {
           {nav("favorites", "Favorites", <Star size={19} />)}
           {nav("gallery", "Photos", <LayoutGrid size={19} />)}
           {nav("discovery", "Discover", <Search size={19} />)}
+          {nav("audio", "Audio", <Music2 size={19} />)}
           {account.shares_enabled &&
             nav("shares", "Shared links", <Link size={19} />)}
           {nav("trash", "Trash", <Trash2 size={19} />)}
         </nav>
+        <PinnedFolders revision={revision} navigate={(path) => navigate("files", path)} />
         <section className="sidebar-smart" aria-label="Smart folders">
           <div className="sidebar-label"><span>Smart folders</span></div>
           {smartFolders.map((folder) => <button key={folder.id}
@@ -1349,6 +1356,7 @@ export default function App() {
                 </button>
               </div>
             )}
+          <Suspense fallback={null}><AudioLibrary visible={view === "audio"} /></Suspense>
           {view === "discovery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><Discovery open={open} locate={(entry) => navigate("files", entry.path.split("/").slice(0, -1).join("/"))} /></Suspense>}
           {view === "gallery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><PhotoGallery /></Suspense>}
           {view === "storage" && (
@@ -1564,6 +1572,7 @@ export default function App() {
             <Download size={16} />
             {contextEntry.type === "folder" ? "Download ZIP" : "Download"}
           </button>
+          {contextEntry.type === "folder" && <button role="menuitem" onClick={() => { setContext(null); void perform(() => api("/library/pins", "POST", { path: contextEntry.path }), "Folder pinned"); }}><Pin size={16} />Pin to sidebar</button>}
           {contextEntry.type === "folder" && (
             <button role="menuitem" onClick={() => chooseAction("compress", [contextEntry])}>
               <FolderArchive size={16} />

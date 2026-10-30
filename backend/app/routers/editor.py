@@ -13,6 +13,10 @@ router = APIRouter(prefix='/api/editor', dependencies=[Depends(require_access)])
 
 
 class ParagraphEdit(BaseModel):
+    bold: bool | None = None
+    italic: bool | None = None
+    style: Literal['body', 'heading1', 'heading2', 'bullet', 'number'] | None = None
+    append: bool = False
     id: int = Field(ge=0, le=2999)
     text: str = Field(max_length=100000)
 

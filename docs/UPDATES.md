@@ -1,3 +1,9 @@
+# Update 1.56: Creative Workspace
+
+Pin folders to the sidebar, preview Markdown beside code, format DOCX/ODT paragraphs and create audio playlists with continuous playback across navigation.
+
+---
+
 # Update 1.55: Photo Studio
 
 Preview embedded JPEGs in supported RAW containers. Export JPEG, PNG or WebP copies, resize batches, remove EXIF/GPS and apply a text or uploaded-logo watermark with a preview.

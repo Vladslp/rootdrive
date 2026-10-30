@@ -11,6 +11,7 @@ from lxml import etree
 from PIL import Image, ImageEnhance, ImageOps, UnidentifiedImageError
 from pypdf import PdfReader, PdfWriter
 from fastapi import HTTPException
+from .document_format import append_paragraph, apply_format, format_info
 
 TEXT_LIMIT = 2 * 1024 * 1024
 DOCUMENT_LIMIT = 32 * 1024 * 1024
@@ -108,6 +109,9 @@ def photo_info(source, max_pixels):
 class OfficeDocument:
     def __init__(self, source, extension):
         self.archive = zipfile.ZipFile(source)
+        self.format_parts = {}
+        self.modified_parts = set()
+        self.list_ids = {}
         infos = self.archive.infolist()
         if len(infos) > 3000 or sum(item.file_size for item in infos) > 64 * 1024 * 1024:
             raise HTTPException(413, 'This document is too complex for the built-in editor')
@@ -178,17 +182,20 @@ class OfficeDocument:
         return slots, editable
 
     def data(self):
-        return [{'id': index, 'text': ''.join(text for _, _, text in slots), 'editable': editable, 'heading': self.paragraphs[index].tag == f'{{{ODT}}}h' or bool(self.paragraphs[index].xpath('./w:pPr/w:pStyle[starts-with(@w:val,"Heading")]', namespaces={'w': WORD}))} for index, (slots, editable) in enumerate(self.slots)]
+        return [{'id': index, 'text': ''.join(text for _, _, text in slots), 'editable': editable, **format_info(self, self.paragraphs[index]), 'heading': self.paragraphs[index].tag == f'{{{ODT}}}h' or bool(self.paragraphs[index].xpath('./w:pPr/w:pStyle[starts-with(@w:val,"Heading")]', namespaces={'w': WORD}))} for index, (slots, editable) in enumerate(self.slots)]
 
     def update(self, changes):
         if len({item.id for item in changes}) != len(changes):
             raise HTTPException(422, 'Duplicate paragraph edits')
         for change in changes:
+            if change.id == len(self.slots) and getattr(change, 'append', False):
+                append_paragraph(self)
             if change.id < 0 or change.id >= len(self.slots):
                 raise HTTPException(422, 'Paragraph no longer exists')
             slots, editable = self.slots[change.id]
             if not editable:
                 raise HTTPException(422, 'This paragraph contains complex content and cannot be changed')
+            apply_format(self, self.paragraphs[change.id], change)
             old = ''.join(text for _, _, text in slots)
             if old == change.text:
                 continue
@@ -256,9 +263,13 @@ class OfficeDocument:
             for item in self.archive.infolist():
                 if item.filename == self.filename:
                     output.writestr(item, content)
+                elif item.filename in self.modified_parts:
+                    output.writestr(item, etree.tostring(self.format_parts[item.filename], xml_declaration=True, encoding='UTF-8'))
                 else:
                     with self.archive.open(item) as source, output.open(item, 'w') as target:
                         shutil.copyfileobj(source, target, 1024 * 1024)
+            for name in self.modified_parts - set(self.archive.namelist()):
+                output.writestr(name, etree.tostring(self.format_parts[name], xml_declaration=True, encoding='UTF-8'))
 
     def close(self):
         self.archive.close()

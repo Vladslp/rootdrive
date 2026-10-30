@@ -156,3 +156,23 @@ class ShareGrant(Base):
     token_hash: Mapped[str] = mapped_column(String, primary_key=True)
     share_id: Mapped[str] = mapped_column(ForeignKey('shares.id', ondelete='CASCADE'), index=True)
     expires_at: Mapped[float] = mapped_column(Float)
+
+
+class PinnedFolder(Base):
+    __tablename__ = 'pinned_folders'
+    owner: Mapped[str] = mapped_column(String, primary_key=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey('item_metadata.id', ondelete='CASCADE'), primary_key=True)
+
+
+class Playlist(Base):
+    __tablename__ = 'playlists'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    owner: Mapped[str] = mapped_column(String, index=True)
+    name: Mapped[str] = mapped_column(String(80))
+
+
+class PlaylistItem(Base):
+    __tablename__ = 'playlist_items'
+    playlist_id: Mapped[str] = mapped_column(ForeignKey('playlists.id', ondelete='CASCADE'), primary_key=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey('item_metadata.id', ondelete='CASCADE'), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer)

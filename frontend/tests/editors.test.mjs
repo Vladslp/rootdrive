@@ -42,7 +42,7 @@ globalThis.Image = class {
 const require = createRequire(import.meta.url);
 const components = fileURLToPath(new URL("../src/components/", import.meta.url));
 const bundle = await build({
-  stdin: { contents: 'export { PhotoEditor } from "./PhotoEditor"; export { PhotoViewport } from "./PhotoViewport"; export { NewFileDialog, ShareDialog } from "./FileDialogs"; export { TagDeleteDialog } from "./TagDeleteDialog"; export { default as EditorDialog } from "./EditorDialog"; export { default as CodeEditor } from "./CodeEditor"; export { EditorView } from "@codemirror/view"; export { undo, redo } from "@codemirror/commands";', resolveDir: components, loader: "tsx" },
+  stdin: { contents: 'export { MarkdownPreview } from "./MarkdownPreview"; export { PhotoEditor } from "./PhotoEditor"; export { PhotoViewport } from "./PhotoViewport"; export { NewFileDialog, ShareDialog } from "./FileDialogs"; export { TagDeleteDialog } from "./TagDeleteDialog"; export { default as EditorDialog } from "./EditorDialog"; export { default as CodeEditor } from "./CodeEditor"; export { EditorView } from "@codemirror/view"; export { undo, redo } from "@codemirror/commands";', resolveDir: components, loader: "tsx" },
   bundle: true,
   format: "esm",
   platform: "node",
@@ -254,4 +254,17 @@ test("Escape in the code field stays in the editor and the save shortcut saves c
   assert.equal(requests.at(-1).body.text, "keyboard save");
   assert.equal(requests.at(-1).body.mode, "original");
   assert.equal(saved.length, 1);
+});
+
+
+test("Markdown preview renders structure and keeps uploaded HTML and unsafe links inert", async () => {
+  await render(h(compiled.MarkdownPreview, { text: '# Heading\n\n**Bold** and *italic*\n\n- One\n- Two\n\n```js\nconst value = 1;\n```\n\n<script>alert(1)</script>\n\n[bad](javascript:alert(1)) [good](https://example.com)' }));
+  assert.equal(host.querySelector('h1').textContent, 'Heading');
+  assert.equal(host.querySelector('strong').textContent, 'Bold');
+  assert.equal(host.querySelectorAll('li').length, 2);
+  assert.ok(host.querySelector('pre code').textContent.includes('const value'));
+  assert.equal(host.querySelector('script'), null);
+  assert.equal(host.querySelectorAll('a').length, 1);
+  assert.equal(host.querySelector('a').getAttribute('href'), 'https://example.com');
+  assert.ok(host.textContent.includes('<script>'));
 });

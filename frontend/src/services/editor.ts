@@ -26,6 +26,10 @@ export function canEdit(entry: Entry) {
   return editorKind(entry) !== null;
 }
 export type Paragraph = {
+  bold?: boolean;
+  italic?: boolean;
+  style?: "body" | "heading1" | "heading2" | "bullet" | "number";
+  append?: boolean;
   id: number;
   text: string;
   editable: boolean;

@@ -67,3 +67,15 @@
 .connection-state:disabled { background: transparent; opacity: 1; }
 @media (max-width: 600px) { .connection-state { max-width: 104px; padding-inline: 4px; font-size: 10px; } }
 @media (max-width: 600px) { .trash-toolbar > .button { grid-row: auto; } }
+.folder-drop-target { outline: 2px solid var(--blue); outline-offset: 3px; background: var(--blue-soft); }
+.archive-dialog { max-width: 760px; }
+.archive-path { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; color: var(--muted); }
+.archive-path > span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.archive-members { max-height: min(42dvh, 420px); overflow: auto; margin-bottom: 20px; border: 1px solid var(--border); border-radius: 10px; }
+.archive-member { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.archive-member:last-child { border: 0; }
+.archive-member-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; }
+.archive-member-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.archive-member-name .art { width: 32px; height: 38px; flex-shrink: 0; }
+.archive-member > small { color: var(--muted); white-space: nowrap; }
+.archive-member input { flex-shrink: 0; }

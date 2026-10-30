@@ -35,6 +35,7 @@ import { ImageDetails } from "./ImageDetails";
 import { PhotoViewport } from "./PhotoViewport";
 
 export type FileAction =
+  | "archive"
   | "compress"
   | "edit"
   | "rename"

@@ -24,6 +24,9 @@ import {
   ChevronRight,
   CircleHelp,
   Download,
+  Copy,
+  Scissors,
+  ClipboardPaste,
   FolderInput,
   FolderSearch,
   FolderArchive,
@@ -67,6 +70,8 @@ import {
   type Tag,
 } from "./services/api";
 import { selectionSize } from "./services/selection";
+import release from "../../backend/app/release.json";
+import { ArchiveDialog } from "./components/ArchiveDialog";
 import { Art, kindOf } from "./components/Art";
 import { canEdit, editorKind } from "./services/editor";
 import { StorageArtwork } from "./components/StorageArtwork";
@@ -165,6 +170,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [clipboard, setClipboard] = useState<{ entries: Entry[]; mode: "copy" | "move" } | null>(null);
   const [selection, setSelection] = useState<string[]>([]);
   const [layout, setLayout] = useState(
     () => readPreference("rootdrive-layout", "grid"),
@@ -212,6 +218,8 @@ export default function App() {
   const selected = listing.items.filter((item) =>
     selection.includes(selectionKey(item)),
   );
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   const notify = useCallback((text: string) => {
     const id = Date.now() + Math.random();
@@ -438,6 +446,12 @@ export default function App() {
         event.preventDefault();
         setSelection(listing.items.map(selectionKey));
       }
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.repeat && !busy && !loading) {
+        if (["c", "x"].includes(event.key.toLowerCase()) && selected.length && fileView) {
+          event.preventDefault(); setClipboard({ entries: selected, mode: event.key.toLowerCase() === "x" ? "move" : "copy" });
+        }
+        if (event.key.toLowerCase() === "v" && clipboard && view === "files") { event.preventDefault(); void paste(); }
+      }
       if (!event.repeat && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && !busy && !loading && !context && fileView) {
         if (event.key === "F2" && selected.length === 1) {
           event.preventDefault();
@@ -455,7 +469,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [ready, commandsOpen, modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items, selected, busy, loading, context]);
+  }, [ready, commandsOpen, modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items, selected, busy, loading, context, clipboard, path]);
   const navigate = useCallback((next: View, destination = "", tag = "") => {
     window.scrollTo({ top: 0, behavior: "instant" });
     const cached = next === "shares" ? undefined : listingCache.current.get(cacheKey(next, destination, tag, "", 0));
@@ -560,6 +574,7 @@ export default function App() {
   }, [done, notify]);
   const open = useCallback((entry: Entry) => {
     if (entry.type === "folder") navigate("files", entry.path);
+    else if (/\.zip$/i.test(entry.name)) setModal({ action: "archive", entries: [entry] });
     else
       setModal({
         action: ["text", "document"].includes(editorKind(entry) || "")
@@ -606,8 +621,28 @@ export default function App() {
     setContext(null);
     setModal({ action, entries });
   }, []);
+  async function transfer(paths: string[], destination: string, mode: "copy" | "move") {
+    setBusy(true);
+    try {
+      await api(mode === "copy" ? "/files/copy" : "/files/batch/move", "POST", { paths, destination });
+      if (mode === "move") setClipboard(null);
+      refresh(); notify(mode === "copy" ? "Copied" : "Moved");
+    } catch (error) { notify((error as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function paste() { if (clipboard) await transfer(clipboard.entries.map((item) => item.path), path, clipboard.mode); }
+  const dropRef = useRef(transfer);
+  dropRef.current = transfer;
   const cardActions = useMemo(() => ({
     open, chooseAction, favorite, navigate, tagMenuProps,
+    drag: (entry: Entry, data: DataTransfer) => {
+      const entries = selectedRef.current.some((item) => item.path === entry.path) ? selectedRef.current : [entry];
+      data.setData("application/x-rootdrive-files", JSON.stringify(entries.map((item) => item.path))); data.effectAllowed = "move";
+    },
+    drop: (destination: string, data: DataTransfer) => {
+      try { const values = JSON.parse(data.getData("application/x-rootdrive-files")); if (Array.isArray(values) && values.every((value) => typeof value === "string")) void dropRef.current(values, destination, "move"); }
+      catch { notify("Invalid file transfer"); }
+    },
     clearTagContext: () => setTagContext(null),
     context: setContext,
     select: (key: string, checked: boolean) => setSelection((current) => checked ? [...current, key] : current.filter((item) => item !== key)),
@@ -799,6 +834,7 @@ export default function App() {
           }
         }}
         onDragOver={(event) => {
+          if (view === "files" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; }
           if (view === "files" && event.dataTransfer.types.includes("Files")) {
             event.preventDefault();
             event.dataTransfer.dropEffect = "copy";
@@ -812,6 +848,10 @@ export default function App() {
           }
         }}
         onDrop={async (event) => {
+          if (event.dataTransfer.types.includes("application/x-rootdrive-files")) {
+            event.preventDefault(); if (view === "files") cardActions.drop(path, event.dataTransfer); return;
+          }
+          if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
           dragDepth.current = 0;
           setDragging(false);
@@ -921,6 +961,7 @@ export default function App() {
                 <FolderPlus size={17} />
                 <span>New folder</span>
               </button>
+              {clipboard && <button className="button secondary" disabled={busy} onClick={() => void paste()} aria-label="Paste files"><ClipboardPaste size={17} /><span>Paste {clipboard.entries.length}</span></button>}
               <UploadButton choose={chooseUpload} />
             </div>
           )}
@@ -1359,7 +1400,7 @@ export default function App() {
                 <dl className="properties-list">
                   <div>
                     <dt>Version</dt>
-                    <dd>MVP 1.0.0</dd>
+                    <dd>{`${release.update} · ${release.name}`}</dd>
                   </div>
                   <div>
                     <dt>Public links</dt>
@@ -1530,6 +1571,8 @@ export default function App() {
             {contextEntry.favorite ? "Remove favorite" : "Add to favorites"}
           </button>
           <hr />
+          <button role="menuitem" onClick={() => { setClipboard({ entries: selected.some((item) => item.path === contextEntry.path) ? selected : [contextEntry], mode: "copy" }); setContext(null); notify("Ready to copy"); }}><Copy size={16} />Copy</button>
+          <button role="menuitem" onClick={() => { setClipboard({ entries: selected.some((item) => item.path === contextEntry.path) ? selected : [contextEntry], mode: "move" }); setContext(null); notify("Ready to move"); }}><Scissors size={16} />Cut</button>
           <button
             role="menuitem"
             onClick={() => chooseAction("rename", [contextEntry])}
@@ -1587,6 +1630,7 @@ export default function App() {
           </button>
         </div>
       )}
+      {modal?.action === "archive" && <ArchiveDialog entry={modal.entries[0]} close={() => setModal(null)} extracted={(entry) => { done("Archive extracted"); navigate("files", entry.path); }} />}
       {modal?.action === "compress" && (
         <CompressDialog entry={modal.entries[0]} close={() => setModal(null)} created={(entry) => {
           done("ZIP created");

@@ -9,6 +9,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import ROOT, Settings
 from .database import ApplicationSetting, create_database
 from .routers import auth, editor, files, shares, uploads, workspace, settings as server_settings
+from .release import RELEASE
+from .routers import archives
 from .services.bootstrap import initialize_workspace
 from .services.filesystem import Filesystem
 from .services.previews import Previews
@@ -58,7 +60,7 @@ def create_app(settings: Settings | None = None):
         yield
         engine.dispose()
 
-    app = FastAPI(title='RootDrive', version='1.0.0', lifespan=lifespan)
+    app = FastAPI(title='RootDrive', version=RELEASE['version'], lifespan=lifespan)
     app.state.settings, app.state.db = settings, sessions
     app.state.fs = Filesystem(settings)
     initialize_workspace(app.state.fs, sessions)
@@ -96,8 +98,9 @@ def create_app(settings: Settings | None = None):
 
     @app.get('/api/health')
     def health():
-        return {'status': 'ok', 'name': 'RootDrive'}
+        return {'status': 'ok', **RELEASE, 'name': 'RootDrive', 'release': RELEASE['name']}
 
+    app.include_router(archives.router)
     app.include_router(auth.router)
     app.include_router(files.router)
     app.include_router(editor.router)

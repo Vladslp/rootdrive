@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from ..database import Session, User
+from ..release import RELEASE
 from ..schemas import LoginInput, UserInput, PasswordChangeInput
 from ..services.security import DUMMY_HASH, current_session, digest, hasher, require_access, verify_password
 
@@ -14,7 +15,7 @@ router = APIRouter(prefix='/api/auth')
 @router.get('/me')
 def me(request: Request):
     settings = request.app.state.settings
-    result = {'auth_enabled': settings.auth_enabled, 'shares_enabled': settings.enable_public_shares, 'max_upload_size_mb': settings.max_upload_size_mb, 'user': None, 'csrf_token': None}
+    result = {**RELEASE, 'auth_enabled': settings.auth_enabled, 'shares_enabled': settings.enable_public_shares, 'max_upload_size_mb': settings.max_upload_size_mb, 'user': None, 'csrf_token': None}
     if settings.auth_enabled:
         with request.app.state.db() as db:
             session = current_session(request, db)

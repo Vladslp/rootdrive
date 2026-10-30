@@ -15,6 +15,9 @@ export type Entry = {
 };
 export type Listing = { items: Entry[]; total: number; revision?: string };
 export type Account = {
+  version?: string;
+  update?: string;
+  name?: string;
   auth_enabled: boolean;
   shares_enabled: boolean;
   max_upload_size_mb: number;

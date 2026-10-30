@@ -63,6 +63,8 @@ beforeEach(async () => {
     else if (url.pathname === "/api/uploads") data = { items: [] };
     else if (url.pathname === "/api/storage/stats") data = { file_count: 1, stored_bytes: 12, disk_total: 1000, disk_free: 800, disk_used: 200, disk_percent: 20, system_bytes: 188, trash_bytes: 0, versions_bytes: 0, uploads_bytes: 0, cache_bytes: 0, exports_bytes: 0, categories: { images: 12, videos: 0, documents: 0, other: 0 } };
     else if (url.pathname === "/api/files") { if (delayListing) await delayListing; data = { items: url.searchParams.get("path") ? [] : [folder, photo, ...additionalFiles], total: url.searchParams.get("path") ? 0 : 2 + additionalFiles.length }; }
+    else if (url.pathname === "/api/archives") data = { items: [{ ...photo, path: "Nested/photo.png" }], total: 1, prefix: "" };
+    else if (url.pathname === "/api/archives/extract") data = { ...folder, name: "Extracted", path: "Extracted" };
     else if (url.pathname === "/api/files/location") data = { path: "", offset: 0 };
     else if (url.pathname === "/api/files/compress") data = { ...photo, name: requests.at(-1).body.name, path: requests.at(-1).body.name, mime: "application/zip" };
     else if (url.pathname === "/api/smart-files") data = { items: [photo], total: 1 };
@@ -596,4 +598,39 @@ test("server status reports transport loss and refreshes files after a successfu
   await click("Retry connection");
   assert.ok(button("Check server connection"));
   assert.ok(requests.filter(({ url }) => url.pathname === "/api/files").length > count);
+});
+
+test("copy and paste send the real file copy endpoint with current destination", async () => {
+  await click("Actions for photo.png");
+  await act(async () => [...host.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent.trim() === "Copy").click());
+  await click("Open Folder");
+  await click("Paste files");
+  const request = requests.find(({ url }) => url.pathname === "/api/files/copy");
+  assert.deepEqual(request.body, { paths: ["photo.png"], destination: "Folder" });
+  assert.equal(request.method, "POST");
+});
+
+test("ZIP files open the archive browser and extraction calls the backend", async () => {
+  additionalFiles = [{ ...photo, name: "Bundle.zip", path: "Bundle.zip", mime: "application/zip" }];
+  await click("Favorites"); await click("My files");
+  await click("Open Bundle.zip");
+  const dialog = host.querySelector('[role="dialog"]');
+  assert.equal(dialog.getAttribute("aria-label"), "Bundle.zip");
+  await act(async () => host.querySelector('input[aria-label="Select archive member photo.png"]').click());
+  await click("Extract 1 selected");
+  const request = requests.find(({ url }) => url.pathname === "/api/archives/extract");
+  assert.deepEqual(request.body.members, ["Nested/photo.png"]);
+  assert.equal(heading(), "Extracted");
+});
+
+test("dropping a file on a folder sends a real move operation", async () => {
+  let value = "";
+  const data = { types: ["application/x-rootdrive-files"], setData: (type, text) => { if (type === "application/x-rootdrive-files") value = text; }, getData: () => value, effectAllowed: "", dropEffect: "" };
+  const start = new window.Event("dragstart", { bubbles: true, cancelable: true });
+  Object.defineProperty(start, "dataTransfer", { value: data });
+  await act(async () => host.querySelector('[data-selection-path="photo.png"]').dispatchEvent(start));
+  const drop = new window.Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(drop, "dataTransfer", { value: data });
+  await act(async () => host.querySelector('[data-selection-path="Folder"]').dispatchEvent(drop));
+  assert.deepEqual(requests.find(({ url }) => url.pathname === "/api/files/batch/move").body, { paths: ["photo.png"], destination: "Folder" });
 });

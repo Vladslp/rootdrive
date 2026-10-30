@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     session_hours: int = 24
     max_preview_pixels: int = 50000000
     preview_cache_size_mb: int = 512
+    max_archive_expanded_mb: int = 10240
 
     def prepare(self) -> None:
         self.storage_path = (ROOT / self.storage_path).resolve()

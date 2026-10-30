@@ -1,4 +1,4 @@
-import { memo, type HTMLAttributes } from "react";
+import { memo, useState, type HTMLAttributes } from "react";
 import { Check, History, MoreHorizontal, Star, Trash2 } from "lucide-react";
 import { bytes, date, type Entry, type Tag } from "../services/api";
 import { FileArtwork } from "./FileArtwork";
@@ -7,6 +7,8 @@ import type { Modal } from "./FileDialogs";
 
 export type FileCardActions = {
   open: (entry: Entry) => void;
+  drag: (entry: Entry, data: DataTransfer) => void;
+  drop: (destination: string, data: DataTransfer) => void;
   chooseAction: (action: Modal["action"], entries: Entry[]) => void;
   favorite: (entry: Entry) => void;
   select: (key: string, checked: boolean) => void;
@@ -27,11 +29,17 @@ type FileCardProps = {
 export const FileCard = memo(function FileCard({
   entry, selected, trash, showPath, busy, actions,
 }: FileCardProps) {
+  const [dropOver, setDropOver] = useState(false);
   const entryKey = trash ? entry.id! : entry.path;
   return (
     <article
+      draggable={!trash}
+      onDragStart={(event) => { if (!trash) actions.drag(entry, event.dataTransfer); }}
+      onDragOver={(event) => { if (!trash && entry.type === "folder" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.stopPropagation(); setDropOver(true); event.dataTransfer.dropEffect = "move"; } }}
+      onDragLeave={() => setDropOver(false)}
+      onDrop={(event) => { setDropOver(false); if (!trash && entry.type === "folder" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.stopPropagation(); actions.drop(entry.path, event.dataTransfer); } }}
       data-selection-path={entryKey}
-      className={"file-card " + (entry.type === "folder" ? "folder-card " : "") + (selected ? "selected" : "")}
+      className={"file-card " + (entry.type === "folder" ? "folder-card " : "") + (selected ? "selected " : "") + (dropOver ? "folder-drop-target" : "")}
       onContextMenu={(event) => {
         if (trash) return;
         event.preventDefault();

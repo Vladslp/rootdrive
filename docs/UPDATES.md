@@ -1,3 +1,9 @@
+# Update 1.51: Archive Tools
+
+Browse ZIP folders, download individual members and extract all or selected items into a new folder. Copy/cut/paste files and folders through the file menu and Ctrl/Cmd+C/X/V; drop files onto folder cards to move them. Copies never overwrite existing names. Unsafe ZIP paths, links, duplicate names and excessive expanded sizes are rejected. RootDrive now displays its numbered update and release name without the MVP label.
+
+---
+
 # Update 1.12: Server connection status
 
 The header shows real connection state, offers retry after transport failures, and refreshes account/files after reconnection. Health checks run at most once per 45 idle seconds while visible and online; failed checks retry after five seconds and time out after eight. Hidden/offline pages and unmounted views stop checks. Normal successful API traffic resets the idle timer.

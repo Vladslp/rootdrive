@@ -31,8 +31,8 @@ def owned_playlist(db, identifier, user):
 
 @router.get('/pins')
 def pins(request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         items = []
         for path in db.scalars(select(ItemMetadata.path).join(PinnedFolder).where(PinnedFolder.owner == owner_key(user)).limit(40)):
             if path.startswith(':trash:'):
@@ -48,8 +48,8 @@ def pins(request: Request, user=Depends(require_access)):
 
 @router.post('/pins')
 def pin(body: PathInput, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         source = fs.path(body.path, allow_root=False)
         if not source.is_dir():
             raise HTTPException(400, 'Pin a folder')
@@ -65,7 +65,7 @@ def pin(body: PathInput, request: Request, user=Depends(require_access)):
 
 @router.delete('/pins')
 def unpin(body: PathInput, request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         record = item_record(db, body.path)
         relation = db.get(PinnedFolder, (owner_key(user), record.id)) if record else None
         if relation:
@@ -76,7 +76,7 @@ def unpin(body: PathInput, request: Request, user=Depends(require_access)):
 
 @router.get('/playlists')
 def playlists(request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         return {'items': [{'id': item.id, 'name': item.name} for item in db.scalars(select(Playlist).where(Playlist.owner == owner_key(user)).order_by(Playlist.name))]}
 
 
@@ -85,7 +85,7 @@ def create_playlist(body: PlaylistInput, request: Request, user=Depends(require_
     name = body.name.strip()
     if not name:
         raise HTTPException(422, 'Give the playlist a name')
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         playlist = Playlist(id=uuid.uuid4().hex, owner=owner_key(user), name=name)
         db.add(playlist)
         db.commit()
@@ -94,7 +94,7 @@ def create_playlist(body: PlaylistInput, request: Request, user=Depends(require_
 
 @router.delete('/playlists/{identifier}')
 def delete_playlist(identifier: str, request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         db.delete(owned_playlist(db, identifier, user))
         db.commit()
     return {'ok': True}
@@ -102,8 +102,8 @@ def delete_playlist(identifier: str, request: Request, user=Depends(require_acce
 
 @router.post('/playlists/{identifier}/items')
 def add_tracks(identifier: str, body: PlaylistPaths, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         owned_playlist(db, identifier, user)
         position = db.scalar(select(func.max(PlaylistItem.position)).where(PlaylistItem.playlist_id == identifier)) or 0
         for value in body.paths:
@@ -120,7 +120,7 @@ def add_tracks(identifier: str, body: PlaylistPaths, request: Request, user=Depe
 
 @router.delete('/playlists/{identifier}/items')
 def remove_tracks(identifier: str, body: PlaylistPaths, request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         owned_playlist(db, identifier, user)
         for value in body.paths:
             record = item_record(db, value)
@@ -133,8 +133,8 @@ def remove_tracks(identifier: str, body: PlaylistPaths, request: Request, user=D
 
 @router.get('/audio')
 def audio(request: Request, playlist: str = '', offset: int = Query(0, ge=0, le=100000), limit: int = Query(60, ge=1, le=120), user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         total = 0
         if playlist:
             owned_playlist(db, playlist, user)

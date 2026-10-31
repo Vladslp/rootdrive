@@ -59,6 +59,7 @@ beforeEach(async () => {
     requests.push({ url, method: options.method || "GET", body: options.body && JSON.parse(options.body) });
     let data = {};
     if (url.pathname === "/api/auth/me") data = { auth_enabled: false, shares_enabled: true, max_upload_size_mb: 2048, csrf_token: null, user: null };
+    else if (url.pathname === "/api/spaces") data = { items: [{ id: "shared", name: "Shared workspace", kind: "legacy", role: "editor", owner: false }], active: "shared" };
     else if (url.pathname === "/api/library/pins") data = { items: [] };
     else if (url.pathname === "/api/tags") data = { items: [tag] };
     else if (url.pathname === "/api/uploads") data = { items: [] };

@@ -55,7 +55,7 @@ def public_target(fs, share, member):
 @router.get('/shares', dependencies=[Depends(require_access)])
 def list_shares(request: Request, offset: int = Query(0, ge=0), limit: int = Query(80, ge=1, le=200)):
     enabled(request)
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         query = select(Share).where(Share.revoked_at.is_(None)).order_by(Share.created_at.desc()).offset(offset).limit(limit)
         return {'items': [{'id': share.id, 'path': share.file_path, 'name': share.file_path.split('/')[-1], 'expires_at': share.expires_at, 'created_at': share.created_at, 'password_protected': db.get(ShareProtection, share.id) is not None} for share in db.scalars(query)], 'total': db.scalar(select(func.count()).select_from(Share).where(Share.revoked_at.is_(None)))}
 
@@ -63,9 +63,9 @@ def list_shares(request: Request, offset: int = Query(0, ge=0), limit: int = Que
 @router.post('/shares', status_code=201, dependencies=[Depends(require_access)])
 def create_share(body: ShareInput, request: Request):
     enabled(request)
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     password_hash = hasher.hash(body.password) if body.password else None
-    with fs.lock, request.app.state.db() as db:
+    with fs.lock, request.state.workspace.db() as db:
         path = fs.path(body.path, allow_root=False)
         if not path.is_file() and not path.is_dir():
             raise HTTPException(404, 'File or folder not found')
@@ -77,13 +77,15 @@ def create_share(body: ShareInput, request: Request):
             db.add(ShareProtection(share_id=share.id, password_hash=password_hash))
         db.commit()
         url = f'/share/{token}' if path.is_dir() or password_hash else f'/api/public/{token}'
+        if request.state.workspace.id != 'shared':
+            url += '?space=' + request.state.workspace.id
         return {'id': share.id, 'url': url, 'expires_at': share.expires_at}
 
 
 @router.delete('/shares/{identifier}', dependencies=[Depends(require_access)])
 def revoke_share(identifier: str, request: Request):
     enabled(request)
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         share = db.get(Share, identifier)
         if not share:
             raise HTTPException(404, 'Share not found')
@@ -110,7 +112,7 @@ def unlock(token: str, body: UnlockInput, request: Request, response: Response):
         if len(attempts) >= 10:
             raise HTTPException(429, 'Too many attempts. Try again in five minutes')
         attempts.append(now)
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         share = load_share(db, token)
         protection = db.get(ShareProtection, share.id)
         if protection and not verify_password(body.password, protection.password_hash):
@@ -127,17 +129,17 @@ def unlock(token: str, body: UnlockInput, request: Request, response: Response):
 @router.get('/public/{token}/info')
 def public_info(token: str, request: Request):
     enabled(request)
-    with request.app.state.fs.lock, request.app.state.db() as db:
+    with request.state.workspace.fs.lock, request.state.workspace.db() as db:
         share = load_share(db, token)
-        path = public_target(request.app.state.fs, share, '')
+        path = public_target(request.state.workspace.fs, share, '')
         return {'name': path.name, 'type': 'folder' if path.is_dir() else 'file', 'locked': not authorized(db, share, token, request), 'expires_at': share.expires_at}
 
 
 @router.get('/public/{token}/list')
 def public_listing(token: str, request: Request, path: str = '', offset: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=120)):
     enabled(request)
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         share = load_share(db, token)
         if not authorized(db, share, token, request):
             raise HTTPException(403, 'Unlock this link first')
@@ -152,8 +154,8 @@ def public_listing(token: str, request: Request, path: str = '', offset: int = Q
 @router.get('/public/{token}')
 def public_file(token: str, request: Request, path: str = ''):
     enabled(request)
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         share = load_share(db, token)
         if not authorized(db, share, token, request):
             raise HTTPException(403, 'Unlock this link first')

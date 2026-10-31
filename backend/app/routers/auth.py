@@ -21,6 +21,10 @@ def me(request: Request):
             session = current_session(request, db)
             if session and (user := db.get(User, session.user_id)):
                 result.update(user={'id': user.id, 'username': user.username, 'role': user.role}, csrf_token=session.csrf_token)
+                try:
+                    result['space'] = request.app.state.spaces.selected(request, user.id)
+                except HTTPException:
+                    result['space'] = {'id': request.cookies.get('rootdrive_space', 'shared'), 'name': 'Unavailable space', 'role': 'reader', 'owner': False, 'kind': 'unavailable'}
     return result
 
 
@@ -47,6 +51,7 @@ def login(body: LoginInput, request: Request, response: Response):
         db.execute(delete(Session).where(Session.expires_at < time.time()))
         db.add(Session(user_id=user.id, session_hash=digest(token), csrf_token=csrf, expires_at=time.time() + settings.session_hours * 3600))
         db.commit()
+        response.delete_cookie('rootdrive_space', path='/')
         response.set_cookie('rootdrive_session', token, httponly=True, secure=settings.cookie_secure, samesite='strict', max_age=settings.session_hours * 3600, path='/')
         return {'user': {'id': user.id, 'username': user.username, 'role': user.role}, 'csrf_token': csrf}
 
@@ -60,6 +65,7 @@ def logout(request: Request, response: Response):
             db.delete(session)
             db.commit()
     response.delete_cookie('rootdrive_session', path='/')
+    response.delete_cookie('rootdrive_space', path='/')
     return {'ok': True}
 
 

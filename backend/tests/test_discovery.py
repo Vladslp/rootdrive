@@ -32,3 +32,10 @@ def test_content_search_reports_lines_and_never_follows_links(client, app, tmp_p
     secret.write_text('sunset')
     (app.state.fs.root / 'link.txt').symlink_to(secret)
     assert client.get('/api/discovery/content', params={'q': 'sunset'}).json()['scanned'] == 3
+
+
+def test_duplicate_scan_refuses_parallel_work(client, app):
+    with app.state.fs.discovery_lock:
+        response = client.post('/api/discovery/duplicates')
+    assert response.status_code == 409
+    assert client.post('/api/discovery/duplicates').status_code == 200

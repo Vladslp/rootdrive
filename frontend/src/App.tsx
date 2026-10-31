@@ -64,6 +64,7 @@ import {
   fileURL,
   saveURL,
   setCSRF,
+  setSpace,
   type Account,
   type Entry,
   type Listing,
@@ -73,6 +74,8 @@ import {
 } from "./services/api";
 import { selectionSize } from "./services/selection";
 import release from "../../backend/app/release.json";
+import { SpaceSelector } from "./components/SpaceSelector";
+import { SpaceSettings } from "./components/SpaceSettings";
 import { InstallSettings } from "./components/InstallSettings";
 import { PinnedFolders } from "./components/PinnedFolders";
 import { ArchiveDialog } from "./components/ArchiveDialog";
@@ -136,6 +139,7 @@ function readSorting(scope: string, fallback = "name", direction = "asc") {
 
 export default function App() {
   const [account, setAccount] = useState<Account | null>(null);
+  const accountIdentity = useRef("");
   const [accountError, setAccountError] = useState("");
   const [view, setView] = useState<View>("files");
   const [smartFolder, setSmartFolder] = useState<SmartFolder>("recent");
@@ -203,6 +207,7 @@ export default function App() {
   const folderInput = useRef<HTMLInputElement>(null);
   const replacePath = useRef<string | undefined>(undefined);
   const mainSearch = useRef<HTMLInputElement>(null);
+  const writable = account?.space?.role !== "reader";
   const ready = Boolean(account && (!account.auth_enabled || account.user));
   const fileView = ["files", "favorites", "tag", "smart"].includes(view);
   const selectionView = fileView || view === "trash";
@@ -238,17 +243,30 @@ export default function App() {
       5500,
     );
   }, []);
-  const queue = useUploads(ready, refresh);
+  const queue = useUploads(ready, refresh, `${account?.user?.username || "workspace"}:${account?.space?.id || "shared"}`);
   const loadAccount = useCallback(async () => {
     try {
       const value = await api<Account>("/auth/me");
+      const identity = `${value.auth_enabled}:${value.user?.username || "anonymous"}:${value.space?.id || "shared"}`;
+      const identityChanged = accountIdentity.current !== identity;
+      if (identityChanged) {
+        queue.reset();
+        listingCache.current.clear();
+        statsRevision.current = null;
+        setListing({ items: [], total: 0 }); setStats(null); setTags([]); setClipboard(null); setSelection([]); setModal(null);
+        setToasts([]); setContext(null); setTagContext(null); setTagToDelete(null); setTagManager(false); setActiveTag(""); setCommandsOpen(false); setDragging(false); setError(""); setStatsError(""); setShares({ items: [], total: 0 });
+        revealPath.current = null; replacePath.current = undefined;
+        setView("files"); setPath(""); setQuery(""); setSearch(""); setOffset(0); setRevision((value) => value + 1);
+        accountIdentity.current = identity;
+      }
       setCSRF(value.csrf_token);
+      setSpace(value.space?.id || "shared", identityChanged);
       setAccount(value);
       setAccountError("");
     } catch (error) {
       setAccountError((error as Error).message);
     }
-  }, []);
+  }, [queue.reset]);
   const loadTags = useCallback(async () => {
     const result = await api<{ items: Tag[] }>("/tags");
     setTags(result.items);
@@ -266,7 +284,7 @@ export default function App() {
   }, [loadAccount, refresh, loadTags, notify]);
   useEffect(() => {
     if (ready) void loadTags().catch((error) => notify(error.message));
-  }, [ready, loadTags, notify]);
+  }, [ready, loadTags, notify, account?.user?.username, account?.space?.id]);
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearch(query);
@@ -456,12 +474,12 @@ export default function App() {
         setSelection(listing.items.map(selectionKey));
       }
       if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.repeat && !busy && !loading) {
-        if (["c", "x"].includes(event.key.toLowerCase()) && selected.length && fileView) {
+        if (["c", "x"].includes(event.key.toLowerCase()) && writable && selected.length && fileView) {
           event.preventDefault(); setClipboard({ entries: selected, mode: event.key.toLowerCase() === "x" ? "move" : "copy" });
         }
-        if (event.key.toLowerCase() === "v" && clipboard && view === "files") { event.preventDefault(); void paste(); }
+        if (event.key.toLowerCase() === "v" && writable && clipboard && view === "files") { event.preventDefault(); void paste(); }
       }
-      if (!event.repeat && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && !busy && !loading && !context && fileView) {
+      if (writable && !event.repeat && !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && !busy && !loading && !context && fileView) {
         if (event.key === "F2" && selected.length === 1) {
           event.preventDefault();
           setModal({ action: "rename", entries: selected });
@@ -478,7 +496,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [ready, commandsOpen, modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items, selected, busy, loading, context, clipboard, path]);
+  }, [ready, commandsOpen, modal, tagManager, tagToDelete, tagContext, fileView, selectionView, view, listing.items, selected, busy, loading, context, clipboard, path, writable]);
   const navigate = useCallback((next: View, destination = "", tag = "") => {
     window.scrollTo({ top: 0, behavior: "instant" });
     const cached = next === "shares" ? undefined : listingCache.current.get(cacheKey(next, destination, tag, "", 0));
@@ -536,6 +554,7 @@ export default function App() {
   }, [navigate, view, smartFolder, refresh]);
   const tagMenuProps = useCallback((tag: Tag) => {
     function show(x: number, y: number) {
+      if (!writable) return;
       setContext(null);
       setTagContext({
         tag,
@@ -558,7 +577,7 @@ export default function App() {
         }
       },
     };
-  }, []);
+  }, [writable]);
   const done = useCallback((message = "Saved") => {
     setModal(null);
     setSelection([]);
@@ -622,15 +641,18 @@ export default function App() {
     }
   }, [refresh, notify]);
   function chooseUpload(folder = false, replacement?: string) {
+    if (!writable) { notify("This workspace is read-only"); return; }
     replacePath.current = replacement;
     if (folder) folderInput.current?.click();
     else filesInput.current?.click();
   }
   const chooseAction = useCallback((action: Modal["action"], entries: Entry[]) => {
+    if (!writable && !["properties", "preview", "edit", "archive"].includes(action)) { notify("This workspace is read-only"); return; }
     setContext(null);
     setModal({ action, entries });
-  }, []);
+  }, [writable, notify]);
   async function transfer(paths: string[], destination: string, mode: "copy" | "move") {
+    if (!writable) { notify("This workspace is read-only"); return; }
     setBusy(true);
     try {
       await api(mode === "copy" ? "/files/copy" : "/files/batch/move", "POST", { paths, destination });
@@ -693,7 +715,7 @@ export default function App() {
       { id: "location", remember: false, label: "Open file location", detail: selected[0].name, icon: FolderSearch, run: () => void reveal(selected[0]) },
       { id: "properties", remember: false, label: "File properties", detail: selected[0].name, icon: Info, run: () => chooseAction("properties", selected) },
     ] : []),
-  ];
+  ].filter((command) => writable || !["newfile", "newfolder", "upload", "rename"].includes(command.id));
   if (!account)
     return (
       <div className="connection-screen">
@@ -744,6 +766,7 @@ export default function App() {
             RootDrive<span className="brand-dot">.</span>
           </span>
         </button>
+        <SpaceSelector account={account} canSwitch={() => !busy && !modal && !queue.getSnapshot().some((item) => item.state !== "done")} />
         <div className="sidebar-scroll">
         <nav aria-label="Main navigation">
           {nav("files", "My files", <HardDrive size={19} />)}
@@ -755,7 +778,7 @@ export default function App() {
             nav("shares", "Shared links", <Link size={19} />)}
           {nav("trash", "Trash", <Trash2 size={19} />)}
         </nav>
-        <PinnedFolders revision={revision} navigate={(path) => navigate("files", path)} />
+        <PinnedFolders key={`${account.user?.username || "workspace"}:${account.space?.id || "shared"}`} readOnly={!writable} revision={revision} navigate={(path) => navigate("files", path)} />
         <section className="sidebar-smart" aria-label="Smart folders">
           <div className="sidebar-label"><span>Smart folders</span></div>
           {smartFolders.map((folder) => <button key={folder.id}
@@ -771,6 +794,7 @@ export default function App() {
             <button
               className="icon-button"
               aria-label="Manage tags"
+              disabled={!writable}
               onClick={() => {
                 setTagManager(true);
                 setSidebar(false);
@@ -843,21 +867,21 @@ export default function App() {
           (dragging ? "is-dragging " : "")
         }
         onDragEnter={(event) => {
-          if (view === "files" && event.dataTransfer.types.includes("Files")) {
+          if (writable && view === "files" && event.dataTransfer.types.includes("Files")) {
             event.preventDefault();
             dragDepth.current++;
             setDragging(true);
           }
         }}
         onDragOver={(event) => {
-          if (view === "files" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; }
-          if (view === "files" && event.dataTransfer.types.includes("Files")) {
+          if (writable && view === "files" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; return; }
+          if (writable && view === "files" && event.dataTransfer.types.includes("Files")) {
             event.preventDefault();
             event.dataTransfer.dropEffect = "copy";
           }
         }}
         onDragLeave={(event) => {
-          if (view === "files") {
+          if (writable && view === "files") {
             event.preventDefault();
             dragDepth.current--;
             if (dragDepth.current <= 0) setDragging(false);
@@ -865,7 +889,7 @@ export default function App() {
         }}
         onDrop={async (event) => {
           if (event.dataTransfer.types.includes("application/x-rootdrive-files")) {
-            event.preventDefault(); if (view === "files") cardActions.drop(path, event.dataTransfer); return;
+            event.preventDefault(); if (writable && view === "files") cardActions.drop(path, event.dataTransfer); return;
           }
           if (!event.dataTransfer.types.includes("Files")) return;
           event.preventDefault();
@@ -955,7 +979,7 @@ export default function App() {
               </button>
             )}
           </div>
-          {view === "files" && (
+          {view === "files" && writable && (
             <div
               className="file-actions"
               role="group"
@@ -1011,7 +1035,7 @@ export default function App() {
               {selected.length > 0 && (
                 <button className="icon-button" aria-label="Clear selection" onClick={() => setSelection([])}><X size={16} /></button>
               )}
-              {selected.length > 0 && <button className="button secondary" disabled={busy || loading || !!error}
+              {selected.length > 0 && <button className="button secondary" disabled={!writable || busy || loading || !!error}
                 onClick={() => void perform(() => api("/trash/restore/batch", "POST", { ids: selected.map((entry) => entry.id) }), "Restored selected items")}>
                 <History size={16} />Restore selected
               </button>}
@@ -1021,7 +1045,7 @@ export default function App() {
               </div>
               <button
                 className="button secondary danger-text"
-                disabled={busy || loading || !!error || !listing.total || !listing.revision || (!selected.length && (!!query || !!search))}
+                disabled={!writable || busy || loading || !!error || !listing.total || !listing.revision || (!selected.length && (!!query || !!search))}
                 title={!selected.length && (query || search) ? "Clear search to remove all Trash items" : undefined}
                 onClick={() => selected.length ? chooseAction("purge", selected) : setModal({
                   action: "emptytrash",
@@ -1044,7 +1068,7 @@ export default function App() {
                     aria-label="My files"
                   >
                     <HardDrive size={17} />
-                    {!path && view === "files" && <span>All files</span>}
+                    {!path && view === "files" && <span>{account.space?.name || "All files"}</span>}
                   </button>
                   {view === "files" &&
                     path
@@ -1203,7 +1227,7 @@ export default function App() {
                           ? "No files with this tag"
                           : "This folder is empty"}
                 </h2>
-                {view === "files" && !search && (
+                {view === "files" && !search && writable && (
                   <button
                     className="button secondary"
                     onClick={() => chooseUpload()}
@@ -1235,7 +1259,7 @@ export default function App() {
                       selected={selection.includes(selectionKey(entry))}
                       trash={view === "trash"}
                       showPath={view === "smart" || view === "favorites" || view === "tag" || Boolean(recursive && search)}
-                      busy={view === "trash" && busy} actions={cardActions} />
+                      busy={view === "trash" && busy} readOnly={!writable} actions={cardActions} />
                   ))}
                 </div>
               )
@@ -1252,6 +1276,7 @@ export default function App() {
               <strong>{selected.length} selected</strong><span className="muted selection-size">{bytes(selectionSize(selected))}</span>
               <div />
               <button
+                disabled={!writable}
                 onClick={() => chooseAction("move", selected)}
                 title="Move"
               >
@@ -1267,6 +1292,7 @@ export default function App() {
                 <span>Download</span>
               </button>
               <button
+                disabled={!writable}
                 onClick={() => chooseAction("tags", selected)}
                 title="Tags"
               >
@@ -1275,6 +1301,7 @@ export default function App() {
               </button>
               <button
                 className="danger-text"
+                disabled={!writable}
                 onClick={() => chooseAction("delete", selected)}
                 title="Move to trash"
               >
@@ -1357,9 +1384,9 @@ export default function App() {
                 </button>
               </div>
             )}
-          <Suspense fallback={null}><AudioLibrary visible={view === "audio"} /></Suspense>
+          <Suspense fallback={null}><AudioLibrary key={`${account.user?.username || "workspace"}:${account.space?.id || "shared"}`} readOnly={!writable} visible={view === "audio"} /></Suspense>
           {view === "discovery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><Discovery open={open} locate={(entry) => navigate("files", entry.path.split("/").slice(0, -1).join("/"))} /></Suspense>}
-          {view === "gallery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><PhotoGallery /></Suspense>}
+          {view === "gallery" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><PhotoGallery readOnly={!writable} /></Suspense>}
           {view === "storage" && (
             <Storage stats={stats} error={statsError} navigate={navigate} />
           )}
@@ -1413,6 +1440,7 @@ export default function App() {
                   notify("Upload limit updated");
                 }}
               />
+              {account.auth_enabled && account.user && <SpaceSettings />}
               <PasswordSettings account={account} changed={loadAccount} notify={notify} />
               <UsersSettings account={account} notify={notify} />
               <section className="settings-section">
@@ -1428,7 +1456,7 @@ export default function App() {
                   </div>
                   <div>
                     <dt>Workspace</dt>
-                    <dd>Shared</dd>
+                    <dd>{account.space?.name || "Shared workspace"}</dd>
                   </div>
                 </dl>
               </section>
@@ -1535,7 +1563,7 @@ export default function App() {
           }}
         />
       )}
-      {context && contextEntry && (
+      {context && contextEntry && writable && (
         <div
           role="menu"
           className="context-menu"
@@ -1652,8 +1680,9 @@ export default function App() {
           </button>
         </div>
       )}
+      {context && contextEntry && !writable && <div role="menu" className="context-menu" style={{ left: context.x, top: context.y }}><button role="menuitem" onClick={() => { setContext(null); open(contextEntry); }}><HardDrive size={16} />Open</button><button role="menuitem" onClick={() => { setContext(null); void download([contextEntry]); }}><Download size={16} />Download</button><button role="menuitem" onClick={() => chooseAction("properties", [contextEntry])}><Info size={16} />Properties</button></div>}
       {modal?.action === "export" && <Suspense fallback={<div className="loading-area"><Loader2 className="spin" /></div>}><PhotoStudio entries={modal.entries} close={() => setModal(null)} saved={() => done("Photo copies saved")} /></Suspense>}
-      {modal?.action === "archive" && <ArchiveDialog entry={modal.entries[0]} close={() => setModal(null)} extracted={(entry) => { done("Archive extracted"); navigate("files", entry.path); }} />}
+      {modal?.action === "archive" && <ArchiveDialog readOnly={!writable} entry={modal.entries[0]} close={() => setModal(null)} extracted={(entry) => { done("Archive extracted"); navigate("files", entry.path); }} />}
       {modal?.action === "compress" && (
         <CompressDialog entry={modal.entries[0]} close={() => setModal(null)} created={(entry) => {
           done("ZIP created");
@@ -1723,11 +1752,12 @@ export default function App() {
       )}
       {modal?.action === "preview" && (
         <PreviewDialog
+          readOnly={!writable}
           entry={modal.entries[0]}
           close={() => setModal(null)}
           properties={() => setModal({ ...modal, action: "properties" })}
           edit={() => setModal({ ...modal, action: "edit" })}
-          share={account.shares_enabled ? () => setModal({ ...modal, action: "share" }) : undefined}
+          share={account.shares_enabled && writable ? () => setModal({ ...modal, action: "share" }) : undefined}
         />
       )}
       {modal?.action === "edit" && (
@@ -1741,6 +1771,7 @@ export default function App() {
           }
         >
           <EditorDialog
+            readOnly={!writable}
             entry={modal.entries[0]}
             close={() => setModal(null)}
             saved={(entry, mode) => done((mode === "copy" ? "Copy saved · " : "Saved · ") + entry.name)}

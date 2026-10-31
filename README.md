@@ -90,7 +90,7 @@ Files, trash, versions, system usage and free space — all together.
 ## A little more
 
 - Files stay in `storage/` during a local installation. Documents, Photos, Videos and Audio are created once on first launch.
-- Login and public links are optional and off by default. Users share one workspace.
+- Login and public links are optional and off by default. Without sign-in there is one shared workspace. With sign-in enabled, each account also has a personal space and can join separate shared spaces.
 - Trash supports search, sorting and restoring multiple selected items. Signed-in users can change their password in Settings.
 - Public links let anyone with the link download the file.
 - For LAN access, set `HOST=0.0.0.0` in `.env` and restart.
@@ -99,36 +99,20 @@ Built as a university Python project: **FastAPI** for the API, **Python filesyst
 
 [Setup, security, tests and limitations →](docs/GUIDE.md)
 
-### Albums and archives
+## More room to create
 
-Photos opens a gallery grouped by modification date. Select photos to add them to a virtual album; deleting an album leaves the original files intact. Use arrow keys in the viewer or start a slideshow.
+![Photo gallery with virtual albums](docs/screenshots/gallery.png)
 
-Open a ZIP to browse or download its members, or extract selected items into a new folder. Unsafe paths, links, encrypted archives and excessive expansion are rejected. The default extraction budget is 10 GB (`MAX_ARCHIVE_EXPANDED_MB`). Copy/cut/paste work from the context menu and with Ctrl/Cmd+C, X and V. Drag a file onto a folder to move it.
+- **Photos** — date groups, slideshows and virtual albums.
+- **Discover** — text inside files and duplicates by content.
+- **Photo exports** — resize, convert, remove EXIF and add a watermark.
+- **Audio** — playlists and a player that follows you.
+- **Spaces** — personal files and shared folders with reader/editor access.
 
-### Find inside files
+![Export photographs with a watermark](docs/screenshots/photo-export.png)
 
-Discover searches UTF-8 notes, source code, DOCX and ODT text. Each search checks up to 2,000 supported files for 15 seconds; text files over 2 MB and unsupported documents are skipped and reported. Narrow the folder for large libraries. Duplicate scans compare SHA-256 contents with a SQLite cache, use a 30-second / 100,000-file budget and display partial results when reached. Nothing is deleted automatically.
+Browse ZIPs, copy/paste files, pin folders and preview Markdown. Install RootDrive from Settings for its own app window.
 
-### Share files and folders
+![Markdown preview beside the editor](docs/screenshots/markdown-preview.png)
 
-Sharing stays disabled unless `ENABLE_PUBLIC_SHARES=true`. Create a link from a file or folder menu, choose an expiry and optionally set a password (8 characters minimum). Folder links allow browsing and downloading only that folder's contents. Anyone with the link and password can access those contents without an account. Passwords use Argon2; unlock grants are HttpOnly cookies valid for at most one hour. Revoke a link in Shared links to immediately end access. Use HTTPS outside a trusted LAN, including for link passwords.
-
-### Photo exports
-
-Select up to 20 photos and choose **Export photos** from a file menu. Choose JPEG, PNG or WebP, quality and maximum dimensions, then preview and save copies next to the originals. Images retain their aspect ratio and are never enlarged. EXIF/GPS removal is on by default. Add text or find an uploaded logo for a watermark. Processing runs one image at a time; a failed batch rolls back its copies.
-
-RAW previews use embedded JPEGs in CR2, CR3, NEF, ARW, DNG, ORF, RW2 and RAF containers where available. This is not RAW development: no demosaicing or camera colour processing. The reader checks the first 128 MB and accepts embedded JPEGs up to 16 MB; unsupported files keep their download option.
-
-### Creative workspace
-
-Pin a folder from its menu; unpin it with the sidebar ×. Pins, albums and playlists follow files renamed or moved through RootDrive. Markdown files have a side-by-side preview with headings, lists, links, quotes and fenced code. Raw HTML is shown as text; remote images and scripts are never executed.
-
-DOCX and ODT editors can apply whole-paragraph bold/italic, headings, bullet/numbered lists and append new paragraphs. Complex embedded paragraphs stay locked and are preserved. This is a paragraph editor, not a page-layout replacement for Word or LibreOffice. Save the original with a version backup or save a separate copy.
-
-Audio lets you create persistent playlists. The native player stays active while navigating RootDrive and streams with HTTP byte ranges. Browser format support determines which tracks can play; files remain downloadable.
-
-### Install as an app
-
-Open Settings → Install RootDrive, or use the browser's install menu. On Safari use Add to Dock / Add to Home Screen. Installation requires localhost or HTTPS; a plain HTTP LAN address is not sufficient. See [browser installation requirements](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
-
-Only the static shell, icons and scripts are cached. File contents, API responses and public share pages are never cached by the service worker. Offline mode shows a reconnect state; it does not make private files available offline.
+**Current release: 1.58 · Private Spaces.** [Feature details and limits →](docs/GUIDE.md#new-workspace-tools)

@@ -76,7 +76,7 @@ export function UsersSettings({
             <Users size={18} />
             Users
           </h3>
-          <p>One shared workspace.</p>
+          <p>Personal and shared spaces.</p>
         </div>
         {admin && (
           <button

@@ -80,9 +80,9 @@ def editor_data(fs, path):
 
 @router.get('')
 def get_editor(request: Request, path: str):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     try:
-        with fs.lock, request.app.state.previews.lock:
+        with fs.lock, request.state.workspace.previews.lock:
             return editor_data(fs, path)
     except (zipfile.BadZipFile, etree.XMLSyntaxError, PdfReadError, ValueError, KeyError):
         raise HTTPException(415, 'This file is damaged or uses an unsupported document format')
@@ -90,15 +90,15 @@ def get_editor(request: Request, path: str):
 
 @router.get('/image')
 def image_reference(request: Request, path: str):
-    return request.app.state.previews.response(path)
+    return request.state.workspace.previews.response(path)
 
 
 @router.post('')
 def save_editor(body: SaveInput, request: Request):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     staged = fs.settings.internal_path / 'uploads' / uuid.uuid4().hex
     try:
-        with fs.lock, request.app.state.previews.lock, request.app.state.db() as db:
+        with fs.lock, request.state.workspace.previews.lock, request.state.workspace.db() as db:
             with open_original(fs, body.path, body.revision) as (original, source, kind, token):
                 if kind != body.kind:
                     raise HTTPException(422, 'The editor does not match this file type')

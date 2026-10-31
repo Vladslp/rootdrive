@@ -133,3 +133,21 @@ test("upload retries sleep when idle, offline or hidden and resume a waiting tra
     assert.equal(retryTimers.size, 0);
   }
 });
+
+
+test("resetting an account stops its upload queue before another account can use it", async () => {
+  let queue, control;
+  const job = { id: "private-job", size: 20, received: 0, status: "open" };
+  globalThis.uploadTestAPI = async (url, method = "GET") => url === "/uploads" && method === "GET" ? { items: [] } : job;
+  globalThis.uploadTestChunk = (_url, _chunk, signal) => new Promise((_resolve, reject) => { control = signal; signal.addEventListener("abort", () => reject(new DOMException("Paused", "AbortError")), { once: true }); });
+  function Harness() { queue = useUploads(true, () => {}); return null; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(h(Harness)));
+    await act(async () => queue.add([{ file: new dom.window.File(["x".repeat(20)], "private.txt"), relative: "private.txt" }], ""));
+    assert.equal(queue.getSnapshot().length, 1);
+    await act(async () => queue.reset());
+    assert.equal(control.aborted, true);
+    assert.deepEqual(queue.getSnapshot(), []);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

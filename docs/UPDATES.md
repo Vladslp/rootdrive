@@ -1,3 +1,9 @@
+# Update 1.58: Private Spaces
+
+Use a personal workspace or invite existing accounts to separate shared spaces with reader/editor access. Files, metadata, trash, previews and links stay isolated. Legacy shared storage remains available.
+
+---
+
 # Update 1.57: App Install
 
 Install RootDrive as a standalone web app. The service worker caches only the static app shell and assets; API responses, shared pages and file contents are never stored offline.

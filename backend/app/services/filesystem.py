@@ -5,7 +5,7 @@ import shutil
 import stat
 import time
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
 from urllib.parse import quote
 from fastapi import HTTPException
 from starlette.responses import StreamingResponse
@@ -18,6 +18,7 @@ class Filesystem:
         self.settings = settings
         self.root = settings.storage_path
         self.lock = RLock()
+        self.discovery_lock = Lock()
         self.stats_cache = None
         self.stats_time = 0.0
         self.folder_cache = {}

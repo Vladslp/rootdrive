@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from "react";
-import { type Entry } from "../services/api";
+import { workspaceURL, type Entry } from "../services/api";
 import { Art, kindOf } from "./Art";
 
 export function isPhoto(entry: Entry) {
@@ -24,12 +24,12 @@ export const FileArtwork = memo(function FileArtwork({
     return (
       <img
         className="file-thumbnail"
-        src={
+        src={workspaceURL(
           "/api/files/thumbnail?path=" +
           encodeURIComponent(entry.path) +
           "&modified=" +
           entry.modified
-        }
+        )}
         alt=""
         loading="lazy"
         decoding="async"

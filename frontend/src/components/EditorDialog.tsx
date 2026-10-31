@@ -73,7 +73,9 @@ export default function EditorDialog({
   entry,
   close,
   saved,
+  readOnly = false,
 }: {
+  readOnly?: boolean;
   entry: Entry;
   close: () => void;
   saved: (entry: Entry, mode: "copy" | "original") => void;
@@ -108,14 +110,23 @@ export default function EditorDialog({
     setPhoto(next.photo);
     setParagraphs(next.paragraphs);
     setPages(next.pages);
-    initial.current = { photo: JSON.stringify(next.photo), paragraphs: JSON.stringify(next.paragraphs), pages: JSON.stringify(next.pages) };
+    initial.current = {
+      photo: JSON.stringify(next.photo),
+      paragraphs: JSON.stringify(next.paragraphs),
+      pages: JSON.stringify(next.pages),
+    };
     setTextDirty(false);
     setEditorVersion((version) => version + 1);
   }, []);
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
-    api<EditorData>("/editor?path=" + encodeURIComponent(entry.path), "GET", undefined, controller.signal)
+    api<EditorData>(
+      "/editor?path=" + encodeURIComponent(entry.path),
+      "GET",
+      undefined,
+      controller.signal,
+    )
       .then((value) => {
         if (active) loadData(value);
       })
@@ -130,10 +141,27 @@ export default function EditorDialog({
       controller.abort();
     };
   }, [entry.path, loadData]);
-  const photoDirty = useMemo(() => JSON.stringify(photo) !== initial.current.photo, [photo, editorVersion]);
-  const paragraphsDirty = useMemo(() => JSON.stringify(paragraphs) !== initial.current.paragraphs, [paragraphs, editorVersion]);
-  const pagesDirty = useMemo(() => JSON.stringify(pages) !== initial.current.pages, [pages, editorVersion]);
-  const dirty = !!data && (data.kind === "text" ? textDirty : data.kind === "photo" ? photoDirty : data.kind === "pdf" ? pagesDirty : paragraphsDirty);
+  const photoDirty = useMemo(
+    () => JSON.stringify(photo) !== initial.current.photo,
+    [photo, editorVersion],
+  );
+  const paragraphsDirty = useMemo(
+    () => JSON.stringify(paragraphs) !== initial.current.paragraphs,
+    [paragraphs, editorVersion],
+  );
+  const pagesDirty = useMemo(
+    () => JSON.stringify(pages) !== initial.current.pages,
+    [pages, editorVersion],
+  );
+  const dirty =
+    !!data &&
+    (data.kind === "text"
+      ? textDirty
+      : data.kind === "photo"
+        ? photoDirty
+        : data.kind === "pdf"
+          ? pagesDirty
+          : paragraphsDirty);
   useEffect(() => {
     if (!dirty) return;
     const guard = (event: BeforeUnloadEvent) => {
@@ -143,50 +171,72 @@ export default function EditorDialog({
     window.addEventListener("beforeunload", guard);
     return () => window.removeEventListener("beforeunload", guard);
   }, [dirty]);
-  const save = useCallback(async (mode: "copy" | "original" = "original") => {
-    if (!data || !dirty || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const changes =
-        data.kind === "text"
-          ? { text: codeEditor.current?.value() ?? text }
-          : data.kind === "photo"
-            ? { photo }
-            : data.kind === "pdf"
-              ? { pages }
-              : {
-                  paragraphs: paragraphs.filter((item) => item.editable && JSON.stringify(item) !== JSON.stringify(data.paragraphs?.find((original) => original.id === item.id))).map(({ id, text, bold, italic, style, append }) => ({ id, text, bold, italic, style, append })),
-                };
-      const result = await api<EditorData & { entry: Entry }>(
-        "/editor",
-        "POST",
-        {
-          path: entry.path,
-          revision: data.revision,
-          kind: data.kind,
-          mode,
-          ...changes,
-        },
-      );
-      saved(result.entry, mode);
-    } catch (error) {
-      setError((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }, [
-    data,
-    dirty,
-    busy,
-    text,
-    photo,
-    paragraphs,
-    pages,
-    entry.path,
-    loadData,
-    saved,
-  ]);
+  const save = useCallback(
+    async (mode: "copy" | "original" = "original") => {
+      if (!data || !dirty || busy || readOnly) return;
+      setBusy(true);
+      setError("");
+      try {
+        const changes =
+          data.kind === "text"
+            ? { text: codeEditor.current?.value() ?? text }
+            : data.kind === "photo"
+              ? { photo }
+              : data.kind === "pdf"
+                ? { pages }
+                : {
+                    paragraphs: paragraphs
+                      .filter(
+                        (item) =>
+                          item.editable &&
+                          JSON.stringify(item) !==
+                            JSON.stringify(
+                              data.paragraphs?.find(
+                                (original) => original.id === item.id,
+                              ),
+                            ),
+                      )
+                      .map(({ id, text, bold, italic, style, append }) => ({
+                        id,
+                        text,
+                        bold,
+                        italic,
+                        style,
+                        append,
+                      })),
+                  };
+        const result = await api<EditorData & { entry: Entry }>(
+          "/editor",
+          "POST",
+          {
+            path: entry.path,
+            revision: data.revision,
+            kind: data.kind,
+            mode,
+            ...changes,
+          },
+        );
+        saved(result.entry, mode);
+      } catch (error) {
+        setError((error as Error).message);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [
+      readOnly,
+      data,
+      dirty,
+      busy,
+      text,
+      photo,
+      paragraphs,
+      pages,
+      entry.path,
+      loadData,
+      saved,
+    ],
+  );
   useEffect(() => {
     const shortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
@@ -233,7 +283,6 @@ export default function EditorDialog({
               </span>
               <span className="editor-format">
                 {data.format?.toUpperCase()}
-
               </span>
               {data.kind === "text" && (
                 <button
@@ -253,21 +302,41 @@ export default function EditorDialog({
             </p>
           )}
           {data && (
-            <fieldset disabled={busy} className="editor-workspace">
+            <fieldset
+              disabled={busy || (readOnly && data.kind !== "text")}
+              className="editor-workspace"
+            >
               {data.kind === "text" && (
-                <div><div className="markdown-toggle">{["md", "markdown"].includes(data.format || "") && <button type="button" className="button secondary" aria-pressed={markdown} onClick={() => { setMarkdownText(codeEditor.current?.value() ?? text); setMarkdown(!markdown); }}>Markdown preview</button>}</div><div className={markdown ? "markdown-workspace" : ""}>
-                <CodeEditor
-                  key={editorVersion}
-                  ref={codeEditor}
-                  text={text}
-                  format={data.format || "txt"}
-                  wrap={wrap}
-                  disabled={busy}
-                  changed={setTextDirty}
-                  snapshot={markdown ? setMarkdownText : undefined}
-                />
-                {markdown && <MarkdownPreview text={markdownText} />}
-                </div></div>
+                <div>
+                  <div className="markdown-toggle">
+                    {["md", "markdown"].includes(data.format || "") && (
+                      <button
+                        type="button"
+                        className="button secondary"
+                        aria-pressed={markdown}
+                        onClick={() => {
+                          setMarkdownText(codeEditor.current?.value() ?? text);
+                          setMarkdown(!markdown);
+                        }}
+                      >
+                        Markdown preview
+                      </button>
+                    )}
+                  </div>
+                  <div className={markdown ? "markdown-workspace" : ""}>
+                    <CodeEditor
+                      key={editorVersion}
+                      ref={codeEditor}
+                      text={text}
+                      format={data.format || "txt"}
+                      wrap={wrap}
+                      disabled={busy || readOnly}
+                      changed={setTextDirty}
+                      snapshot={markdown ? setMarkdownText : undefined}
+                    />
+                    {markdown && <MarkdownPreview text={markdownText} />}
+                  </div>
+                </div>
               )}
               {data.kind === "photo" && (
                 <PhotoEditor
@@ -283,18 +352,95 @@ export default function EditorDialog({
                 <div className="document-editor">
                   <div className="document-note">
                     <AlignLeft size={16} />
-                    Format whole paragraphs. Complex embedded content is preserved.
+                    Format whole paragraphs. Complex embedded content is
+                    preserved.
                   </div>
                   <div className="document-paper">
                     {paragraphs.map((item) => (
                       <div
                         className={
                           "document-paragraph " +
-                          (item.style?.startsWith("heading") ? "document-heading" : "") + (item.bold ? " paragraph-bold" : "") + (item.italic ? " paragraph-italic" : "") + (item.style === "bullet" || item.style === "number" ? " paragraph-list" : "")
+                          (item.style?.startsWith("heading")
+                            ? "document-heading"
+                            : "") +
+                          (item.bold ? " paragraph-bold" : "") +
+                          (item.italic ? " paragraph-italic" : "") +
+                          (item.style === "bullet" || item.style === "number"
+                            ? " paragraph-list"
+                            : "")
                         }
                         key={item.id}
                       >
-                        {item.editable && <div className="paragraph-toolbar"><select aria-label={"Style for paragraph " + (item.id + 1)} value={item.style || "body"} onChange={(event) => setParagraphs((current) => current.map((paragraph) => paragraph.id === item.id ? { ...paragraph, style: event.target.value as Paragraph["style"] } : paragraph))}>{[["body", "Text"], ["heading1", "Heading 1"], ["heading2", "Heading 2"], ["bullet", "Bullet list"], ["number", "Numbered list"]].map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select><button type="button" aria-label={"Bold paragraph " + (item.id + 1)} aria-pressed={!!item.bold} onClick={() => setParagraphs((current) => current.map((paragraph) => paragraph.id === item.id ? { ...paragraph, bold: !paragraph.bold } : paragraph))}><strong>B</strong></button><button type="button" aria-label={"Italic paragraph " + (item.id + 1)} aria-pressed={!!item.italic} onClick={() => setParagraphs((current) => current.map((paragraph) => paragraph.id === item.id ? { ...paragraph, italic: !paragraph.italic } : paragraph))}><em>I</em></button></div>}
+                        {item.editable && (
+                          <div className="paragraph-toolbar">
+                            <select
+                              aria-label={
+                                "Style for paragraph " + (item.id + 1)
+                              }
+                              value={item.style || "body"}
+                              onChange={(event) =>
+                                setParagraphs((current) =>
+                                  current.map((paragraph) =>
+                                    paragraph.id === item.id
+                                      ? {
+                                          ...paragraph,
+                                          style: event.target
+                                            .value as Paragraph["style"],
+                                        }
+                                      : paragraph,
+                                  ),
+                                )
+                              }
+                            >
+                              {[
+                                ["body", "Text"],
+                                ["heading1", "Heading 1"],
+                                ["heading2", "Heading 2"],
+                                ["bullet", "Bullet list"],
+                                ["number", "Numbered list"],
+                              ].map(([value, label]) => (
+                                <option value={value} key={value}>
+                                  {label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              aria-label={"Bold paragraph " + (item.id + 1)}
+                              aria-pressed={!!item.bold}
+                              onClick={() =>
+                                setParagraphs((current) =>
+                                  current.map((paragraph) =>
+                                    paragraph.id === item.id
+                                      ? { ...paragraph, bold: !paragraph.bold }
+                                      : paragraph,
+                                  ),
+                                )
+                              }
+                            >
+                              <strong>B</strong>
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={"Italic paragraph " + (item.id + 1)}
+                              aria-pressed={!!item.italic}
+                              onClick={() =>
+                                setParagraphs((current) =>
+                                  current.map((paragraph) =>
+                                    paragraph.id === item.id
+                                      ? {
+                                          ...paragraph,
+                                          italic: !paragraph.italic,
+                                        }
+                                      : paragraph,
+                                  ),
+                                )
+                              }
+                            >
+                              <em>I</em>
+                            </button>
+                          </div>
+                        )}
                         {item.editable ? (
                           <ParagraphInput
                             paragraph={item}
@@ -316,7 +462,28 @@ export default function EditorDialog({
                         )}
                       </div>
                     ))}
-                    <button type="button" className="button secondary" disabled={paragraphs.length >= 3000} onClick={() => setParagraphs((current) => [...current, { id: current.length, text: "", editable: true, heading: false, bold: false, italic: false, style: "body", append: true }])}>Add paragraph</button>
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={paragraphs.length >= 3000}
+                      onClick={() =>
+                        setParagraphs((current) => [
+                          ...current,
+                          {
+                            id: current.length,
+                            text: "",
+                            editable: true,
+                            heading: false,
+                            bold: false,
+                            italic: false,
+                            style: "body",
+                            append: true,
+                          },
+                        ])
+                      }
+                    >
+                      Add paragraph
+                    </button>
                   </div>
                 </div>
               )}
@@ -353,7 +520,13 @@ export default function EditorDialog({
                   Unsaved changes
                 </>
               ) : data?.kind === "text" ? (
-                "Ready to edit"
+                readOnly ? (
+                  "Read only"
+                ) : (
+                  "Ready to edit"
+                )
+              ) : readOnly ? (
+                "Read only"
               ) : (
                 "Ready to edit"
               )}
@@ -381,7 +554,7 @@ export default function EditorDialog({
             {data && (
               <button
                 className="button secondary"
-                disabled={busy || !dirty}
+                disabled={busy || !dirty || readOnly}
                 onClick={() => void save("copy")}
                 title="Save a separate copy (Ctrl/Cmd+Shift+S)"
               >
@@ -392,7 +565,7 @@ export default function EditorDialog({
             {data && (
               <button
                 className="button primary"
-                disabled={busy || !dirty}
+                disabled={busy || !dirty || readOnly}
                 onClick={() => void save("original")}
                 title="Save original with version history (Ctrl/Cmd+S)"
               >

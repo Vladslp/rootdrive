@@ -14,7 +14,15 @@ export type Entry = {
   child_count?: number | null;
 };
 export type Listing = { items: Entry[]; total: number; revision?: string };
+export type Space = {
+  id: string;
+  name: string;
+  kind: string;
+  role: "reader" | "editor";
+  owner: boolean;
+};
 export type Account = {
+  space?: Space;
   version?: string;
   update?: string;
   name?: string;
@@ -48,15 +56,26 @@ export type Shared = {
 };
 export class APIError extends Error {
   status: number;
-  constructor(
-    message: string,
-    status: number,
-  ) {
+  constructor(message: string, status: number) {
     super(message);
     this.status = status;
   }
 }
 let csrf = "";
+let activeSpace = "shared";
+let generation = 0;
+export function setSpace(value: string, reset = false) {
+  if (reset || value !== activeSpace) generation += 1;
+  activeSpace = value;
+}
+export function workspaceURL(value: string) {
+  if (!value.startsWith("/api/") || value.startsWith("/api/public/"))
+    return value;
+  const url = new URL(value, window.location.origin);
+  if (!url.searchParams.has("workspace"))
+    url.searchParams.set("workspace", activeSpace);
+  return url.pathname + url.search;
+}
 export function setCSRF(value: string | null) {
   csrf = value || "";
 }
@@ -66,23 +85,28 @@ export async function api<T>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
+  const startedIn = generation;
   let response: Response;
   try {
     response = await fetch("/api" + url, {
-    method,
-    signal,
-    headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+      method,
+      signal,
+      headers: {
+        "X-RootDrive-Space": activeSpace,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
   } catch (error) {
-    if (!signal?.aborted) window.dispatchEvent(new window.Event("rootdrive:connection-lost"));
+    if (!signal?.aborted)
+      window.dispatchEvent(new window.Event("rootdrive:connection-lost"));
     throw error;
   }
   window.dispatchEvent(new window.Event("rootdrive:connection-ok"));
   const data = await response.json();
+  if (startedIn !== generation)
+    throw new DOMException("Workspace changed", "AbortError");
   if (!response.ok) {
     if (response.status === 401)
       window.dispatchEvent(new window.Event("rootdrive:unauthorized"));
@@ -101,6 +125,7 @@ export function upload(
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", "/api/files/upload?path=" + encodeURIComponent(path));
+    request.setRequestHeader("X-RootDrive-Space", activeSpace);
     if (csrf) request.setRequestHeader("X-CSRF-Token", csrf);
     request.upload.onprogress = (event) => {
       if (event.lengthComputable)
@@ -123,10 +148,12 @@ export function upload(
   });
 }
 export const fileURL = (entry: Entry, preview = false) =>
-  "/api/files/" +
-  (preview ? "preview" : "download") +
-  "?path=" +
-  encodeURIComponent(entry.path);
+  workspaceURL(
+    "/api/files/" +
+      (preview ? "preview" : "download") +
+      "?path=" +
+      encodeURIComponent(entry.path),
+  );
 export function bytes(value: number) {
   if (!value) return "0 B";
   const unit = Math.min(Math.floor(Math.log(value) / Math.log(1024)), 4);
@@ -150,6 +177,7 @@ export function sendChunk(
     const xhr = new XMLHttpRequest();
     xhr.open(method, "/api" + url);
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.setRequestHeader("X-RootDrive-Space", activeSpace);
     if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf);
     const abort = () => xhr.abort();
     signal?.addEventListener("abort", abort, { once: true });
@@ -205,15 +233,40 @@ export const date = (value: number) =>
   });
 export function saveURL(url: string) {
   const link = document.createElement("a");
-  link.href = url;
+  link.href = workspaceURL(url);
   link.download = "";
   document.body.appendChild(link);
   link.click();
   link.remove();
 }
 
-export async function apiBlob(url: string, body: unknown, signal?: AbortSignal): Promise<Blob> {
-  const response = await fetch("/api" + url, { method: "POST", signal, headers: { "Content-Type": "application/json", ...(csrf ? { "X-CSRF-Token": csrf } : {}) }, body: JSON.stringify(body) });
-  if (!response.ok) { const result = await response.json(); throw new APIError(result.error?.message || "Unable to generate preview", response.status); }
-  return response.blob();
+export async function apiBlob(
+  url: string,
+  body: unknown,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const startedIn = generation;
+  const response = await fetch("/api" + url, {
+    method: "POST",
+    signal,
+    headers: {
+      "X-RootDrive-Space": activeSpace,
+      "Content-Type": "application/json",
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (startedIn !== generation)
+    throw new DOMException("Workspace changed", "AbortError");
+  if (!response.ok) {
+    const result = await response.json();
+    throw new APIError(
+      result.error?.message || "Unable to generate preview",
+      response.status,
+    );
+  }
+  const blob = await response.blob();
+  if (startedIn !== generation)
+    throw new DOMException("Workspace changed", "AbortError");
+  return blob;
 }

@@ -29,7 +29,7 @@ export type Transfer = {
   retries?: number;
 };
 
-export function useUploads(ready: boolean, completed: () => void) {
+export function useUploads(ready: boolean, completed: () => void, scope = "workspace") {
   const scheduleRetry = useRef<() => void>(() => {});
   const listeners = useRef(new Set<() => void>());
   const snapshot = useRef<Transfer[]>([]);
@@ -52,6 +52,15 @@ export function useUploads(ready: boolean, completed: () => void) {
   const abort = useRef<AbortController | null>(null);
   const publication = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reset = useCallback(() => {
+    abort.current?.abort();
+    ref.current = [];
+    if (publication.current !== null) clearTimeout(publication.current);
+    if (completionTimer.current !== null) clearTimeout(completionTimer.current);
+    publication.current = null;
+    completionTimer.current = null;
+    setTransfers([]);
+  }, [setTransfers]);
   const completedRef = useRef(completed);
   completedRef.current = completed;
   const update = useCallback((key: string, values: Partial<Transfer>) => {
@@ -107,7 +116,7 @@ export function useUploads(ready: boolean, completed: () => void) {
     return () => {
       active = false;
     };
-  }, [ready]);
+  }, [ready, scope]);
   const reportCompleted = useCallback(() => {
     if (completionTimer.current !== null) clearTimeout(completionTimer.current);
     completionTimer.current = setTimeout(() => {
@@ -358,6 +367,7 @@ export function useUploads(ready: boolean, completed: () => void) {
     replace,
     reselect,
     clearDone,
+    reset,
   };
 }
 

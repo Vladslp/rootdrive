@@ -5,11 +5,11 @@ from lxml import etree
 import time
 from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 from ..database import ContentHash
 from ..services.security import require_access
 from ..services.io import open_regular
-from ..services.editors import OfficeDocument, TEXT_LIMIT, read_text
+from ..services.editors import OfficeDocument, DOCUMENT_LIMIT, TEXT_LIMIT, read_text
 
 router = APIRouter(prefix='/api/discovery', dependencies=[Depends(require_access)])
 TEXT_EXTENSIONS = {'.txt', '.md', '.markdown', '.csv', '.tsv', '.json', '.yaml', '.yml', '.toml', '.log', '.html', '.css', '.js', '.ts', '.tsx', '.jsx', '.py', '.sh', '.sql', '.xml', '.ini', '.conf'}
@@ -21,7 +21,16 @@ def signature(info):
 
 @router.post('/duplicates')
 def duplicates(request: Request):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
+    if not fs.discovery_lock.acquire(blocking=False):
+        raise HTTPException(409, 'A duplicate scan is already running')
+    try:
+        return duplicate_scan(fs, request.state.workspace.db)
+    finally:
+        fs.discovery_lock.release()
+
+
+def duplicate_scan(fs, database):
     sizes = defaultdict(list)
     deadline = time.monotonic() + 30
     incomplete = False
@@ -40,7 +49,9 @@ def duplicates(request: Request):
             continue
     groups = defaultdict(list)
     hashed = 0
-    with request.app.state.db() as db:
+    with database() as db:
+        if db.scalar(select(func.count()).select_from(ContentHash)) > 100000:
+            db.execute(delete(ContentHash))
         db.execute(delete(ContentHash).where(ContentHash.path.like(':trash:%')))
         for size, values in sizes.items():
             if len(values) < 2:
@@ -86,7 +97,7 @@ def duplicates(request: Request):
 
 @router.get('/content')
 def search_content(request: Request, q: str = Query(min_length=2, max_length=200), path: str = '', limit: int = Query(60, ge=1, le=100)):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     directory = fs.path(path)
     if not directory.is_dir():
         raise HTTPException(400, 'Choose a folder')
@@ -106,6 +117,9 @@ def search_content(request: Request, q: str = Query(min_length=2, max_length=200
         try:
             with open_regular(fs, fs.relative(candidate)) as (original, source):
                 if suffix in {'.docx', '.odt'}:
+                    if candidate.stat().st_size > DOCUMENT_LIMIT:
+                        skipped += 1
+                        continue
                     document = OfficeDocument(source, suffix)
                     try:
                         text = '\n'.join(item['text'] for item in document.data())

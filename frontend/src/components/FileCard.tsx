@@ -24,20 +24,21 @@ type FileCardProps = {
   trash: boolean;
   showPath: boolean;
   busy: boolean;
+  readOnly?: boolean;
   actions: FileCardActions;
 };
 export const FileCard = memo(function FileCard({
-  entry, selected, trash, showPath, busy, actions,
+  entry, selected, trash, showPath, busy, actions, readOnly = false,
 }: FileCardProps) {
   const [dropOver, setDropOver] = useState(false);
   const entryKey = trash ? entry.id! : entry.path;
   return (
     <article
-      draggable={!trash}
-      onDragStart={(event) => { if (!trash) actions.drag(entry, event.dataTransfer); }}
-      onDragOver={(event) => { if (!trash && entry.type === "folder" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.stopPropagation(); setDropOver(true); event.dataTransfer.dropEffect = "move"; } }}
+      draggable={!trash && !readOnly}
+      onDragStart={(event) => { if (!trash && !readOnly) actions.drag(entry, event.dataTransfer); }}
+      onDragOver={(event) => { if (!trash && !readOnly && entry.type === "folder" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.stopPropagation(); setDropOver(true); event.dataTransfer.dropEffect = "move"; } }}
       onDragLeave={() => setDropOver(false)}
-      onDrop={(event) => { setDropOver(false); if (!trash && entry.type === "folder" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.stopPropagation(); actions.drop(entry.path, event.dataTransfer); } }}
+      onDrop={(event) => { setDropOver(false); if (!trash && !readOnly && entry.type === "folder" && event.dataTransfer.types.includes("application/x-rootdrive-files")) { event.preventDefault(); event.stopPropagation(); actions.drop(entry.path, event.dataTransfer); } }}
       data-selection-path={entryKey}
       className={"file-card " + (entry.type === "folder" ? "folder-card " : "") + (selected ? "selected " : "") + (dropOver ? "folder-drop-target" : "")}
       onContextMenu={(event) => {
@@ -68,7 +69,7 @@ export const FileCard = memo(function FileCard({
           />
           <Check size={13} />
         </label>
-        {!trash && (
+        {!trash && !readOnly && (
           <button
             className={"favorite-toggle " + (entry.favorite ? "is-favorite" : "")}
             aria-label={(entry.favorite ? "Unfavorite " : "Favorite ") + entry.name}
@@ -122,7 +123,7 @@ export const FileCard = memo(function FileCard({
           </div>
         )}
         {showPath && <span className="entry-path">/{entry.path.split("/").slice(0, -1).join("/")}</span>}
-        {trash && (
+        {trash && !readOnly && (
           <div className="trash-actions">
             <button className="text-button" disabled={busy} onClick={() => actions.restore(entry)}>
               <History size={14} />

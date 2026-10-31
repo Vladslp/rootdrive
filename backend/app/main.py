@@ -10,7 +10,8 @@ from .config import ROOT, Settings
 from .database import ApplicationSetting, create_database
 from .routers import auth, editor, files, shares, uploads, workspace, settings as server_settings
 from .release import RELEASE
-from .routers import archives, gallery, discovery, studio, library
+from .routers import archives, gallery, discovery, studio, library, spaces
+from .services.spaces import SpaceRegistry
 from .services.bootstrap import initialize_workspace
 from .services.filesystem import Filesystem
 from .services.previews import Previews
@@ -26,8 +27,13 @@ class BodyLimit:
         received = 0
         limit = self.settings.max_upload_size_mb * 1024 * 1024 * 20 + 1024 * 1024
 
-        if scope.get('path') == '/api/editor' and scope.get('method') == 'POST':
-            limit = 16 * 1024 * 1024
+        if scope.get('path') != '/api/files/upload':
+            limit = min(limit, 16 * 1024 * 1024)
+        headers = dict(scope.get('headers', []))
+        length = headers.get(b'content-length', b'0')
+        if length.isdigit() and int(length) > limit:
+            response = JSONResponse({'error': {'message': 'Request body exceeds the allowed size'}}, status_code=413)
+            return await response(scope, receive, send)
 
         async def limited_receive():
             nonlocal received
@@ -58,6 +64,7 @@ def create_app(settings: Settings | None = None):
     @asynccontextmanager
     async def lifespan(app):
         yield
+        app.state.spaces.close()
         engine.dispose()
 
     app = FastAPI(title='RootDrive', version=RELEASE['version'], lifespan=lifespan)
@@ -65,6 +72,7 @@ def create_app(settings: Settings | None = None):
     app.state.fs = Filesystem(settings)
     initialize_workspace(app.state.fs, sessions)
     app.state.previews = Previews(settings, app.state.fs)
+    app.state.spaces = SpaceRegistry(app)
     app.state.login_attempts = defaultdict(deque)
     app.add_middleware(BodyLimit, settings=settings)
 
@@ -79,6 +87,14 @@ def create_app(settings: Settings | None = None):
     @app.exception_handler(OSError)
     async def filesystem_error(request, error):
         return JSONResponse({'error': {'message': 'Storage is unavailable, full, or not writable'}}, status_code=503)
+
+    @app.middleware('http')
+    async def workspace_context(request: Request, call_next):
+        try:
+            app.state.spaces.resolve(request)
+        except HTTPException as error:
+            return JSONResponse({'error': {'message': str(error.detail)}}, status_code=error.status_code)
+        return await call_next(request)
 
     @app.middleware('http')
     async def security_headers(request: Request, call_next):
@@ -100,6 +116,7 @@ def create_app(settings: Settings | None = None):
     def health():
         return {'status': 'ok', **RELEASE, 'name': 'RootDrive', 'release': RELEASE['name']}
 
+    app.include_router(spaces.router)
     app.include_router(library.router)
     app.include_router(studio.router)
     app.include_router(discovery.router)

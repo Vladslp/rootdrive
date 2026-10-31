@@ -52,7 +52,7 @@ def test_create_valid_office_document_and_save_copy(client, extension):
             assert 'META-INF/manifest.xml' in archive.namelist()
     data = client.get('/api/editor', params={'path': path}).json()
     assert data['kind'] == 'document'
-    assert data['paragraphs'] == [{'id': 0, 'text': '', 'editable': True, 'heading': False}]
+    assert data['paragraphs'] == [{'id': 0, 'text': '', 'editable': True, 'heading': False, 'bold': False, 'italic': False, 'style': 'body'}]
     saved = client.post('/api/editor', json={'path': path, 'kind': 'document', 'revision': data['revision'], 'paragraphs': [{'id': 0, 'text': 'First paragraph\nSecond line'}]})
     assert saved.status_code == 200, saved.text
     assert saved.json()['entry']['path'] == 'Document (edited).' + extension

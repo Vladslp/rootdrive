@@ -25,22 +25,22 @@ class ExtractInput(BaseModel):
 
 @router.post('/files/copy', status_code=201)
 def copy_files(body: CopyInput, request: Request):
-    return copy_paths(request.app.state.fs, body.paths, body.destination)
+    return copy_paths(request.state.workspace.fs, body.paths, body.destination)
 
 
 @router.get('/archives')
 def browse_archive(request: Request, path: str, prefix: str = '', offset: int = Query(0, ge=0, le=10000), limit: int = Query(100, ge=1, le=200)):
-    return archive_listing(request.app.state.fs, path, prefix, offset, limit)
+    return archive_listing(request.state.workspace.fs, path, prefix, offset, limit)
 
 
 @router.post('/archives/extract', status_code=201)
 def unpack_archive(body: ExtractInput, request: Request):
-    return extract_archive(request.app.state.fs, body.path, body.destination, body.name, body.members)
+    return extract_archive(request.state.workspace.fs, body.path, body.destination, body.name, body.members)
 
 
 @router.get('/archives/member')
 def archive_member(request: Request, path: str, member: str):
-    manager = open_archive(request.app.state.fs, path)
+    manager = open_archive(request.state.workspace.fs, path)
     archive, members = manager.__enter__()
     try:
         info = members.get(member)

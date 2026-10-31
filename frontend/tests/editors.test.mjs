@@ -268,3 +268,14 @@ test("Markdown preview renders structure and keeps uploaded HTML and unsafe link
   assert.equal(host.querySelector('a').getAttribute('href'), 'https://example.com');
   assert.ok(host.textContent.includes('<script>'));
 });
+
+
+test("read-only code remains viewable and cannot submit a save", async () => {
+  await render(h(EditorDialog, { entry, readOnly: true, close() {}, saved() {} }));
+  assert.equal(host.querySelector('.cm-content').getAttribute('contenteditable'), 'false');
+  const buttons = [...host.querySelectorAll('button')];
+  assert.equal(buttons.find((button) => button.textContent.trim() === 'Save').disabled, true);
+  assert.equal(buttons.find((button) => button.textContent.trim() === 'Save copy').disabled, true);
+  assert.ok(host.textContent.includes('Read only'));
+  assert.equal(requests.some((request) => request.method === 'POST'), false);
+});

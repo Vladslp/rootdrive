@@ -176,3 +176,20 @@ class PlaylistItem(Base):
     playlist_id: Mapped[str] = mapped_column(ForeignKey('playlists.id', ondelete='CASCADE'), primary_key=True)
     item_id: Mapped[str] = mapped_column(ForeignKey('item_metadata.id', ondelete='CASCADE'), primary_key=True)
     position: Mapped[int] = mapped_column(Integer)
+
+
+class Space(Base):
+    __tablename__ = 'spaces'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String)
+    owner_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
+    personal_key: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+
+
+class SpaceMember(Base):
+    __tablename__ = 'space_members'
+    space_id: Mapped[str] = mapped_column(ForeignKey('spaces.id', ondelete='CASCADE'), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    role: Mapped[str] = mapped_column(String)

@@ -65,3 +65,16 @@ def test_logo_and_raw_embedded_preview(client, app):
     assert client.post('/api/studio/export', json={'paths': ['camera.cr2'], 'format': 'webp'}).status_code == 201
     app.state.settings.max_preview_pixels = 100
     assert client.post('/api/studio/preview', json={'paths': ['photo.jpg']}).status_code == 413
+
+
+def test_raw_preview_skips_jpeg_markers_inside_metadata_segments(client):
+    thumbnail = io.BytesIO()
+    Image.new('RGB', (10, 10), 'blue').save(thumbnail, format='JPEG')
+    payload = thumbnail.getvalue()
+    main = photo()
+    embedded = main[:2] + b'\xff\xe2' + (len(payload) + 2).to_bytes(2, 'big') + payload + main[2:]
+    put(client, 'nested.cr3', b'RAW CONTAINER' + embedded)
+    response = client.get('/api/files/thumbnail', params={'path': 'nested.cr3'})
+    assert response.status_code == 200
+    with Image.open(io.BytesIO(response.content)) as image:
+        assert image.size == (120, 80)

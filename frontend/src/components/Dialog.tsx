@@ -24,13 +24,18 @@ export function Dialog({
     const frame = requestAnimationFrame(() => {
       const target =
         box.current?.querySelector<HTMLElement>(
-          "[autofocus], input:not([type=hidden]), select, textarea",
+          "[autofocus]:not(:disabled), input:not([type=hidden]):not(:disabled), select:not(:disabled), textarea:not(:disabled)",
         ) || box.current?.querySelector<HTMLElement>("button");
-      target?.focus();
+      target?.focus({ preventScroll: true });
     });
     const key = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
-      if (event.key === "Escape" && event.target instanceof Element && event.target.closest(".cm-editor")) return;
+      if (
+        event.key === "Escape" &&
+        event.target instanceof Element &&
+        event.target.closest(".cm-editor")
+      )
+        return;
       if (event.key === "Escape") {
         event.stopPropagation();
         closeRef.current();
@@ -59,7 +64,7 @@ export function Dialog({
       cancelAnimationFrame(frame);
       document.body.style.overflow = overflow;
       document.removeEventListener("keydown", key);
-      previous?.focus();
+      previous?.focus({ preventScroll: true });
     };
   }, []);
   return (

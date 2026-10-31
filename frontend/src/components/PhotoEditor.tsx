@@ -1,3 +1,4 @@
+import { workspaceURL } from "../services/api";
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import {
   Crop,
@@ -37,11 +38,11 @@ export function PhotoEditor({
     source.onerror = () => {
       if (active) setError("The photo preview could not be loaded");
     };
-    source.src =
+    source.src = workspaceURL(
       "/api/editor/image?path=" +
       encodeURIComponent(path) +
       "&revision=" +
-      revision;
+      revision);
     return () => {
       active = false;
       source.onload = null;

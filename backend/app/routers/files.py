@@ -21,8 +21,8 @@ router = APIRouter(prefix='/api', dependencies=[Depends(require_access)])
 @router.get('/files', response_model=FileListing)
 @router.get('/search', response_model=FileListing)
 def list_files(request: Request, path: str = '', q: str = '', recursive: bool = False, sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200), user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         listing = fs.listing(path, q, recursive, sort, direction, offset, limit)
         enrich(db, listing['items'], owner_key(user))
         return listing
@@ -30,8 +30,8 @@ def list_files(request: Request, path: str = '', q: str = '', recursive: bool = 
 
 @router.get('/smart-files', response_model=FileListing)
 def list_smart_files(request: Request, kind: Literal['recent', 'photos', 'documents', 'large'], recent_days: int = Query(7, ge=1, le=365), min_size_mb: int = Query(100, ge=1, le=1048576), q: str = Query('', max_length=240), sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200), user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         listing = smart_listing(fs, kind, q, sort, direction, offset, limit, recent_days, min_size_mb)
         enrich(db, listing['items'], owner_key(user))
         return listing
@@ -39,10 +39,10 @@ def list_smart_files(request: Request, kind: Literal['recent', 'photos', 'docume
 
 @router.post('/files', status_code=201, response_model=FileEntry)
 def create_file(body: CreateFileInput, request: Request):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     staged = fs.settings.internal_path / 'uploads' / uuid.uuid4().hex
     try:
-        with fs.lock, request.app.state.db() as db:
+        with fs.lock, request.state.workspace.db() as db:
             parent = fs.path(body.path)
             if not parent.is_dir():
                 raise HTTPException(400, 'Destination must be a folder')
@@ -56,7 +56,7 @@ def create_file(body: CreateFileInput, request: Request):
 
 @router.post('/folders', status_code=201, response_model=FileEntry)
 def create_folder(body: FolderInput, request: Request):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     with fs.lock:
         parent = fs.path(body.path)
         if not parent.is_dir():
@@ -70,7 +70,7 @@ def create_folder(body: FolderInput, request: Request):
 
 @router.post('/files/upload', status_code=201)
 def upload_files(request: Request, path: str = '', files: list[UploadFile] = File(...)):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     if len(files) > 20:
         raise HTTPException(400, 'Upload up to 20 files per request')
     created, staged = [], []
@@ -117,7 +117,7 @@ def upload_files(request: Request, path: str = '', files: list[UploadFile] = Fil
 
 @router.get('/files/location')
 def file_location(request: Request, path: str, limit: int = Query(60, ge=1, le=200)):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     with fs.lock:
         source = fs.path(path, allow_root=False)
         entry = fs.entry(source, folder_details=False)
@@ -137,19 +137,19 @@ def file_location(request: Request, path: str, limit: int = Query(60, ge=1, le=2
 
 @router.get('/files/download')
 def download_file(request: Request, path: str):
-    return request.app.state.fs.response(path)
+    return request.state.workspace.fs.response(path)
 
 
 @router.get('/files/preview')
 def preview_file(request: Request, path: str):
     if Path(path).suffix.lower() in {'.heic', '.heif', '.avif', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2', '.raf'}:
-        return request.app.state.previews.response(path)
-    return request.app.state.fs.response(path, preview=True)
+        return request.state.workspace.previews.response(path)
+    return request.state.workspace.fs.response(path, preview=True)
 
 
 @router.get('/files/thumbnail')
 def thumbnail_file(request: Request, path: str):
-    return request.app.state.previews.response(path, thumbnail=True, if_none_match=request.headers.get('if-none-match'))
+    return request.state.workspace.previews.response(path, thumbnail=True, if_none_match=request.headers.get('if-none-match'))
 
 
 def relocate(fs, db, source, destination):
@@ -170,16 +170,16 @@ def relocate(fs, db, source, destination):
 
 @router.patch('/files/rename', response_model=FileEntry)
 def rename_file(body: RenameInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         source = fs.path(body.path, allow_root=False)
         return relocate(fs, db, source, source.parent / fs.name(body.name))
 
 
 @router.post('/files/move', response_model=FileEntry)
 def move_file(body: MoveInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         source = fs.path(body.path, allow_root=False)
         destination = fs.path(body.destination)
         if not destination.is_dir():
@@ -189,8 +189,8 @@ def move_file(body: MoveInput, request: Request):
 
 @router.delete('/files')
 def delete_file(body: PathInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         source = fs.path(body.path, allow_root=False)
         identifier = uuid.uuid4().hex
         destination = fs.settings.internal_path / 'trash' / identifier
@@ -211,7 +211,7 @@ def delete_file(body: PathInput, request: Request):
 @router.get('/trash')
 def list_trash(request: Request, q: str = Query('', max_length=240), sort: str = Query('modified', pattern='^(name|size|modified)$'), direction: str = Query('desc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0), limit: int = Query(80, ge=1, le=200)):
     from sqlalchemy import func
-    with request.app.state.fs.lock, request.app.state.db() as db:
+    with request.state.workspace.fs.lock, request.state.workspace.db() as db:
         match = func.lower(TrashItem.original_path).contains(q.lower(), autoescape=True)
         field = func.lower(TrashItem.original_path) if sort == 'name' else TrashItem.size if sort == 'size' else TrashItem.deleted_at
         order = field.desc() if direction == 'desc' else field.asc()
@@ -220,8 +220,8 @@ def list_trash(request: Request, q: str = Query('', max_length=240), sort: str =
 
 @router.post('/trash/restore')
 def restore_trash(body: TrashInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         item = db.get(TrashItem, body.id)
         if not item:
             raise HTTPException(404, 'Trash item not found')
@@ -244,8 +244,8 @@ def restore_trash(body: TrashInput, request: Request):
 
 @router.delete('/trash')
 def remove_trash(body: TrashInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         item = db.get(TrashItem, body.id)
         if not item:
             raise HTTPException(404, 'Trash item not found')
@@ -263,15 +263,15 @@ class TrashBatchInput(BaseModel):
 
 @router.post('/trash/restore/batch')
 def restore_selected_trash(body: TrashBatchInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         return restore_items(fs, db, body.ids)
 
 
 @router.delete('/trash/batch')
 def remove_selected_trash(body: TrashBatchInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         identifiers = set(body.ids)
         items = db.scalars(select(TrashItem).where(TrashItem.id.in_(identifiers))).all()
         if len(items) != len(identifiers):
@@ -281,8 +281,8 @@ def remove_selected_trash(body: TrashBatchInput, request: Request):
 
 @router.delete('/trash/all')
 def empty_trash(body: EmptyTrashInput, request: Request):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         if body.revision != trash_revision(db):
             raise HTTPException(409, 'Trash changed. Refresh and confirm Remove all again')
         return purge_items(fs, db, db.scalars(select(TrashItem)).yield_per(200))
@@ -290,9 +290,9 @@ def empty_trash(body: EmptyTrashInput, request: Request):
 
 @router.get('/storage/stats', response_model=StorageStats)
 def storage_stats(request: Request):
-    return request.app.state.fs.stats()
+    return request.state.workspace.fs.stats()
 
 
 @router.get('/files/metadata')
 def file_metadata(request: Request, path: str):
-    return image_metadata(request.app.state.fs, path)
+    return image_metadata(request.state.workspace.fs, path)

@@ -1,3 +1,4 @@
+import { workspaceURL } from "../services/api";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Loader2, RotateCw, Trash2 } from "lucide-react";
 import {
@@ -151,11 +152,11 @@ export default function PDFEditor({
     setDocument(null);
     setError("");
     const task = getDocument({
-      url:
+      url: workspaceURL(
         "/api/files/media?path=" +
         encodeURIComponent(path) +
         "&revision=" +
-        revision,
+        revision),
       useSystemFonts: true,
       cMapUrl: "/assets/pdfjs/cmaps/",
       cMapPacked: true,

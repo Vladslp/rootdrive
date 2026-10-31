@@ -213,6 +213,7 @@ Copy `.env.example` to `.env`. Relative paths are resolved from the project dire
 | `MAX_UPLOAD_SIZE_MB` | `2048` | Initial per-file limit; a saved Settings override takes precedence |
 | `SESSION_HOURS` | `24` | Session duration |
 | `MAX_PREVIEW_PIXELS` | `50000000` | Maximum decoded photo size for thumbnails/previews |
+| `MAX_ARCHIVE_EXPANDED_MB` | `10240` | Maximum combined uncompressed ZIP extraction size |
 | `PREVIEW_CACHE_SIZE_MB` | `512` | Derived JPEG preview cache limit |
 
 Storage must not contain application code, the database, `.env` or the internal directories. Keep `STORAGE_PATH` and `INTERNAL_PATH` on the **same filesystem** for rename-based trash operations and atomic ZIP publication. For an external disk, use sibling paths such as `/mnt/drive/files` and `/mnt/drive/rootdrive-internal`. The database can remain on the host disk.
@@ -248,13 +249,13 @@ python run.py create-admin --username admin
 
 Then set `AUTH_ENABLED=true` and restart. Passwords must contain at least ten characters. Passwords are hashed with Argon2id. The CLI does not accept passwords as command-line arguments.
 
-Administrators can list users and create member or administrator accounts in Settings → Users, or through `GET /api/auth/users` and `POST /api/auth/users`. There is no open registration. When authentication is off, Settings shows instructions for creating the first administrator through the CLI and enabling authentication. All signed-in users access **one shared workspace**. They do not have private directories. They can modify the same files and revoke workspace shares.
+Administrators can list users and create member or administrator accounts in Settings → Users, or through `GET /api/auth/users` and `POST /api/auth/users`. There is no open registration. When authentication is off, Settings shows instructions for creating the first administrator through the CLI and enabling authentication. The original **shared workspace** remains available to all signed-in users. Each account also has a separate personal space, and owners can invite existing accounts to named shared spaces with reader/editor access. Select the active space in the sidebar. Each space has separate files, metadata and internal data.
 
 Sessions use random tokens in HttpOnly, SameSite=Strict cookies; only token hashes are stored in SQLite. The frontend keeps the CSRF token in memory and includes it on mutations. Session tokens are never stored in localStorage. Expired sessions are cleaned up on login. Login attempts are limited per client address in memory; a server restart resets that limit.
 
 ## Sharing
 
-Set `ENABLE_PUBLIC_SHARES=true` to reveal sharing actions. Create a link from an individual file's menu. Choose an hour, a day, a week or no expiration. Anyone with the link can download that file without signing in.
+Set `ENABLE_PUBLIC_SHARES=true` to reveal sharing actions. Create a link from a file or folder menu; optionally add a password. Choose an hour, a day, a week or no expiration. Anyone with the link can download that file without signing in.
 
 Tokens contain 256 bits of randomness and only hashes are persisted. The full link appears once when created; copy it then. The Shared links screen lists and revokes links. Existing links follow API renames and moves. Moving a file or parent folder to trash revokes its links permanently; restoration does not reactivate them. Files modified outside RootDrive cannot be tracked automatically, so revoke old links before replacing shared paths externally.
 
@@ -309,7 +310,7 @@ The editor API accepts `mode: original` or `mode: copy` (the default for API com
 
 The photo editor shows a JPEG preview with a maximum 1920-pixel edge. Final processing uses the original image at its full resolution. Transformations apply orientation, clockwise rotation, flip, normalized crop, then color adjustments. Alpha is retained where the output format supports it; available EXIF and ICC data are passed through with orientation and dimensions updated. JPEG/HEIF/WebP/AVIF saves re-encode the image and may change compression, color rendering or auxiliary metadata. The browser uses CSS filters for responsive live adjustments, including browsers without Canvas filter support. This approximates the saved color rendering. Photo previews and the photo editor have 25–800% zoom, double-click zoom, fit/reset, Ctrl/Cmd+wheel zoom and drag-to-pan when enlarged. Zoom only changes the view and is never saved into the image. Crop mode temporarily fits the image so drag selection remains precise. Save copy keeps the source next to its edited copy; Save retains the previous source in version history.
 
-The Office editor changes text, rather than reproducing a word processor's page layout. It does not insert/delete paragraphs or change document styles. Paragraphs containing links, fields, drawings, tracked changes or other complex constructs are locked and preserved. Headers, footers, embedded media and other ZIP entries remain in the file. XML external entities and DTDs are rejected, and package contents are never extracted onto the server filesystem. Existing run styles are retained and inserted text inherits an adjacent run. Detected package signatures are rejected because editing would invalidate them.
+The Office editor changes text, rather than reproducing a word processor's page layout. It supports whole-paragraph bold/italic, headings, bullet/numbered lists and appending new paragraphs. Deleting/reordering existing paragraphs and full page layout are not included. Paragraphs containing links, fields, drawings, tracked changes or other complex constructs are locked and preserved. Headers, footers, embedded media and other ZIP entries remain in the file. XML external entities and DTDs are rejected, and package contents are never extracted onto the server filesystem. Existing run styles are retained and inserted text inherits an adjacent run. Detected package signatures are rejected because editing would invalidate them.
 
 The PDF editor manages pages, not existing PDF text or images. It preserves selected pages and their content, imports associated outlines where possible and retains document metadata. Advanced annotations and PDF structures may be rewritten by pypdf. PDF.js, its worker, fonts, character maps and WebAssembly resources are bundled locally; opening the editor makes no CDN requests. The editor and PDF renderer are loaded on demand, so the normal file manager keeps its small initial bundle.
 
@@ -507,10 +508,10 @@ Install a supported Node.js version to build locally, or copy the project and a 
 
 ## Current limitations
 
-- One shared workspace; no private per-user folders or granular permissions.
+- Personal spaces require sign-in. The legacy shared workspace is readable and writable by all signed-in accounts; named shared spaces use reader/editor membership. Spaces are not encrypted and remain accessible to the operating-system owner.
 - One server worker. Locks do not coordinate separate processes.
 - Designed for a trusted LAN with server-owned storage. Do not let untrusted local users mutate storage concurrently. Final download opens reject symlinks, but parent-path validation and mutations are not fully descriptor-relative; hostile external filesystem changes can create races.
-- Office editing is limited to DOCX/ODT paragraph text, and PDF editing to page operations. Full Office rendering, format conversion and OCR are not implemented. Audio/video support depends on browser codecs. Native images and PDFs preview directly; HEIC/HEIF and AVIF have derived JPEG previews.
+- Office editing is limited to DOCX/ODT paragraph text and formatting, and PDF editing to page operations. Full Office rendering, format conversion and OCR are not implemented. Audio/video support depends on browser codecs. Native images and PDFs preview directly; HEIC/HEIF and AVIF have derived JPEG previews.
 - Media playback, saved-version downloads and generated ZIPs support byte ranges. Original attachment downloads stream sequentially; large PDF inline behavior depends on the browser.
 - Directory scanning, recursive search and initial storage stats can take time on very large collections. There is no background indexer.
 - The move picker is paginated. Bulk selection covers the current page, not every result in a large search.
@@ -522,7 +523,7 @@ Install a supported Node.js version to build locally, or copy the project and a 
 
 ## Planned improvements
 
-Rich document formatting, spreadsheet/presentation editors, more photo tools, indexed search for large libraries, private per-user folders/permissions, scheduled backups, richer account administration, original-file download ranges and stronger descriptor-relative filesystem operations. These are not exposed as unfinished controls in the interface.
+Full page-layout editing, spreadsheet/presentation editors, RAW development, indexed search for very large libraries, scheduled backups, space archival, richer account administration, original-file download ranges and stronger descriptor-relative filesystem operations. These are not exposed as unfinished controls in the interface.
 
 ## Design assets
 
@@ -536,3 +537,53 @@ Settings on desktop:
 ![RootDrive settings in dark mode](screenshots/settings.png)
 
 README artwork and screenshots are stored in `docs/`. The banner was created with ImageGen using the existing app mark as a reference. Screenshots were captured from the running production frontend with an isolated demo workspace. They contain no personal files. They are illustrations of the interface, not performance or hardware benchmarks.
+
+## New workspace tools
+
+### Albums and archives
+
+Photos opens a gallery grouped by modification date. Select photos to add them to a virtual album; deleting an album leaves the original files intact. Use arrow keys in the viewer or start a slideshow.
+
+Open a ZIP to browse or download its members, or extract selected items into a new folder. Unsafe paths, links, encrypted archives and excessive expansion are rejected. The default extraction budget is 10 GB (`MAX_ARCHIVE_EXPANDED_MB`). Copy/cut/paste work from the context menu and with Ctrl/Cmd+C, X and V. Drag a file onto a folder to move it.
+
+### Find inside files
+
+Discover searches UTF-8 notes, source code, DOCX and ODT text. Each search checks up to 2,000 supported files for 15 seconds; text files over 2 MB and unsupported documents are skipped and reported. Narrow the folder for large libraries. Duplicate scans compare SHA-256 contents with a SQLite cache, use a 30-second / 100,000-file budget and display partial results when reached. Nothing is deleted automatically.
+
+### Share files and folders
+
+Sharing stays disabled unless `ENABLE_PUBLIC_SHARES=true`. Create a link from a file or folder menu, choose an expiry and optionally set a password (8 characters minimum). Folder links allow browsing and downloading only that folder's contents. Anyone with the link and password can access those contents without an account. Passwords use Argon2; unlock grants are HttpOnly cookies valid for at most one hour. Revoke a link in Shared links to immediately end access. Use HTTPS outside a trusted LAN, including for link passwords.
+
+### Photo exports
+
+Select up to 20 photos and choose **Export photos** from a file menu. Choose JPEG, PNG or WebP, quality and maximum dimensions, then preview and save copies next to the originals. Images retain their aspect ratio and are never enlarged. EXIF/GPS removal is on by default. Add text or find an uploaded logo for a watermark. Processing runs one image at a time; a failed batch rolls back its copies.
+
+RAW previews use embedded JPEGs in CR2, CR3, NEF, ARW, DNG, ORF, RW2 and RAF containers where available. This is not RAW development: no demosaicing or camera colour processing. The reader checks the first 128 MB and accepts embedded JPEGs up to 16 MB; unsupported files keep their download option.
+
+### Creative workspace
+
+Pin a folder from its menu; unpin it with the sidebar ×. Pins, albums and playlists follow files renamed or moved through RootDrive. Markdown files have a side-by-side preview with headings, lists, links, quotes and fenced code. Raw HTML is shown as text; remote images and scripts are never executed.
+
+DOCX and ODT editors can apply whole-paragraph bold/italic, headings, bullet/numbered lists and append new paragraphs. Complex embedded paragraphs stay locked and are preserved. This is a paragraph editor, not a page-layout replacement for Word or LibreOffice. Save the original with a version backup or save a separate copy.
+
+Audio lets you create persistent playlists. The native player stays active while navigating RootDrive and streams with HTTP byte ranges. Browser format support determines which tracks can play; files remain downloadable.
+
+### Install as an app
+
+Open Settings → Install RootDrive, or use the browser's install menu. On Safari use Add to Dock / Add to Home Screen. Installation requires localhost or HTTPS; a plain HTTP LAN address is not sufficient. See [browser installation requirements](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
+
+Only the static shell, icons and scripts are cached. File contents, API responses and public share pages are never cached by the service worker. Offline mode shows a reconnect state; it does not make private files available offline.
+
+### Personal and shared spaces
+
+Enable `AUTH_ENABLED=true` and create accounts with the administrator CLI / Settings. The original shared workspace stays available to all signed-in accounts; existing files are never migrated. Every account also gets a **Personal** space. Server administrators do not automatically gain web access to another account's personal space.
+
+In Settings → Spaces, create a shared space and invite an existing username with **Read only** or **Can edit** access. Only its owner manages membership. Removing membership takes effect on the next request. Switch spaces in the sidebar; finish editing and finish/cancel uploads first. A stale browser tab is rejected rather than writing into a different space.
+
+Each added space stores its files, SQLite metadata, previews, versions and trash under `INTERNAL_PATH/spaces/<random-id>/`; these directories are outside the original browsable root. Public links created within a space explicitly identify that space and still require their random token, optional password and expiry checks. Turning sign-in off exposes only the original shared workspace. The operating-system owner can still access every file on disk; this is application-level isolation, not encryption or protection from the server administrator.
+
+### Resource and update notes
+
+JSON/control request bodies are limited to 16 MB independently of large multipart uploads. ZIP directories are checked before parsing (10,000 entries / 32 MB of directory metadata). Only one duplicate scan runs per space at a time. Markdown previews render at most 1,000 lines / 200,000 characters. These budgets protect interactive use on smaller hosts.
+
+After deploying a new frontend build, reload open browser tabs so that they use the current set of JavaScript chunks. Private files remain on the server; app installation does not provide offline file editing.

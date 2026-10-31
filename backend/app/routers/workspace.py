@@ -20,8 +20,8 @@ router = APIRouter(prefix='/api')
 
 @router.get('/collection')
 def collection(request: Request, favorite: bool = False, tag: str = '', q: str = '', sort: str = Query('name', pattern='^(name|size|type|modified)$'), direction: str = Query('asc', pattern='^(asc|desc)$'), offset: int = Query(0, ge=0, le=100000), limit: int = Query(80, ge=1, le=200), user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         query = select(ItemMetadata)
         if favorite:
             query = query.join(Favorite).where(Favorite.owner == owner_key(user))
@@ -55,8 +55,8 @@ def collection(request: Request, favorite: bool = False, tag: str = '', q: str =
 
 @router.post('/favorites')
 def set_favorite(body: FavoriteInput, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         for path in body.paths:
             source = fs.path(path, allow_root=False)
             record = item_record(db, fs.relative(source), create=True)
@@ -71,7 +71,7 @@ def set_favorite(body: FavoriteInput, request: Request, user=Depends(require_acc
 
 @router.get('/tags')
 def tags(request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         return {'items': [{'id': tag.id, 'name': tag.name, 'color': tag.color} for tag in db.scalars(select(Tag).order_by(Tag.name))]}
 
 
@@ -80,7 +80,7 @@ def create_tag(body: TagInput, request: Request, user=Depends(require_access)):
     name = body.name.strip()
     if not name or any(ord(letter) < 32 for letter in name):
         raise HTTPException(400, 'Invalid tag name')
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         if db.scalar(select(Tag).where(func.lower(Tag.name) == name.lower())):
             raise HTTPException(409, 'This tag already exists')
         tag = Tag(id=uuid.uuid4().hex, name=name, color=body.color)
@@ -97,7 +97,7 @@ def update_tag(identifier: str, body: TagInput, request: Request, user=Depends(r
     name = body.name.strip()
     if not name or any(ord(letter) < 32 for letter in name):
         raise HTTPException(400, 'Invalid tag name')
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         tag = db.get(Tag, identifier)
         if not tag:
             raise HTTPException(404, 'Tag not found')
@@ -114,7 +114,7 @@ def update_tag(identifier: str, body: TagInput, request: Request, user=Depends(r
 
 @router.delete('/tags/{identifier}')
 def delete_tag(identifier: str, request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         tag = db.get(Tag, identifier)
         if not tag:
             raise HTTPException(404, 'Tag not found')
@@ -125,8 +125,8 @@ def delete_tag(identifier: str, request: Request, user=Depends(require_access)):
 
 @router.post('/files/tags')
 def assign_tags(body: ItemTagsInput, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         for identifier in body.tag_ids:
             if db.get(Tag, identifier) is None:
                 raise HTTPException(404, 'Tag not found')
@@ -148,22 +148,22 @@ def assign_tags(body: ItemTagsInput, request: Request, user=Depends(require_acce
 
 @router.post('/files/batch/move')
 def move_many(body: BatchInput, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         return bulk_move(fs, db, body.paths, body.destination)
 
 
 @router.post('/files/batch/trash')
 def trash_many(body: BatchInput, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         return bulk_trash(fs, db, body.paths)
 
 
 @router.post('/files/archive', status_code=201)
 def make_archive(body: BatchInput, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         directory = fs.settings.internal_path / 'exports'
         directory.mkdir(exist_ok=True)
         for expired in db.scalars(select(ArchiveExport).where(ArchiveExport.created_at < time.time() - 3600)):
@@ -186,16 +186,16 @@ def make_archive(body: BatchInput, request: Request, user=Depends(require_access
 
 @router.post('/files/compress', status_code=201, response_model=FileEntry)
 def save_folder_zip(body: CompressInput, request: Request, user=Depends(require_access)):
-    return compress_folder(request.app.state.fs, body.path, body.name)
+    return compress_folder(request.state.workspace.fs, body.path, body.name)
 
 
 @router.get('/exports/{identifier}')
 def download_archive(identifier: str, request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         export = db.get(ArchiveExport, identifier)
         if export is None or export.owner != owner_key(user) or export.created_at < time.time() - 3600:
             raise HTTPException(404, 'Archive expired. Create it again')
-        target = request.app.state.settings.internal_path / 'exports' / export.id
+        target = request.state.workspace.settings.internal_path / 'exports' / export.id
         if not target.is_file():
             raise HTTPException(404, 'Archive is unavailable')
         return FileResponse(target, media_type='application/zip', filename=export.name)
@@ -203,8 +203,8 @@ def download_archive(identifier: str, request: Request, user=Depends(require_acc
 
 @router.get('/files/versions')
 def file_versions(request: Request, path: str, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         source = fs.path(path, allow_root=False)
         if not source.is_file():
             raise HTTPException(400, 'Choose a file')
@@ -226,8 +226,8 @@ def find_version(fs, db, identifier):
 
 @router.get('/versions/{identifier}/download')
 def download_version(identifier: str, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         version, source = find_version(fs, db, identifier)
         target = fs.settings.internal_path / 'versions' / version.stored_path
         if not target.is_file():
@@ -237,8 +237,8 @@ def download_version(identifier: str, request: Request, user=Depends(require_acc
 
 @router.post('/versions/{identifier}/restore')
 def restore_version(identifier: str, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         version, source = find_version(fs, db, identifier)
         saved = fs.settings.internal_path / 'versions' / version.stored_path
         if not saved.is_file():
@@ -254,7 +254,7 @@ def restore_version(identifier: str, request: Request, user=Depends(require_acce
 
 @router.api_route('/files/media', methods=['GET', 'HEAD'])
 def media(request: Request, path: str, user=Depends(require_access)):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     with fs.lock:
         source = fs.path(path, allow_root=False)
         entry = fs.entry(source)

@@ -28,7 +28,7 @@ def owned_album(db, identifier, user):
 
 @router.get('/albums')
 def albums(request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         return {'items': [{'id': item.id, 'name': item.name} for item in db.scalars(select(Album).where(Album.owner == owner_key(user)).order_by(Album.created_at))]}
 
 
@@ -37,7 +37,7 @@ def create_album(body: AlbumInput, request: Request, user=Depends(require_access
     name = body.name.strip()
     if not name:
         raise HTTPException(422, 'Give the album a name')
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         album = Album(id=uuid.uuid4().hex, owner=owner_key(user), name=name)
         db.add(album)
         db.commit()
@@ -46,7 +46,7 @@ def create_album(body: AlbumInput, request: Request, user=Depends(require_access
 
 @router.delete('/albums/{identifier}')
 def delete_album(identifier: str, request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         db.delete(owned_album(db, identifier, user))
         db.commit()
     return {'ok': True}
@@ -54,8 +54,8 @@ def delete_album(identifier: str, request: Request, user=Depends(require_access)
 
 @router.post('/albums/{identifier}/items')
 def add_photos(identifier: str, body: AlbumPaths, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         owned_album(db, identifier, user)
         for value in body.paths:
             path = fs.path(value, allow_root=False)
@@ -70,7 +70,7 @@ def add_photos(identifier: str, body: AlbumPaths, request: Request, user=Depends
 
 @router.delete('/albums/{identifier}/items')
 def remove_photos(identifier: str, body: AlbumPaths, request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         owned_album(db, identifier, user)
         for value in body.paths:
             item = item_record(db, value, create=False)
@@ -82,9 +82,9 @@ def remove_photos(identifier: str, body: AlbumPaths, request: Request, user=Depe
 
 
 @router.get('/gallery')
-def gallery(request: Request, album: str = '', offset: int = Query(0, ge=0, le=1000000), limit: int = Query(60, ge=1, le=120), user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+def gallery(request: Request, album: str = '', offset: int = Query(0, ge=0, le=100000), limit: int = Query(60, ge=1, le=120), user=Depends(require_access)):
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         if album:
             owned_album(db, album, user)
             values = db.scalars(select(ItemMetadata.path).join(AlbumItem, AlbumItem.item_id == ItemMetadata.id).where(AlbumItem.album_id == album))

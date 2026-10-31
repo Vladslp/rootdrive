@@ -88,3 +88,12 @@ def test_copy_failure_rolls_back_already_created_targets(client, app, monkeypatc
     assert client.post('/api/files/copy', json={'paths': ['one.txt', 'two.txt']}).status_code == 503
     assert {item.name for item in app.state.fs.root.iterdir()} == {'one.txt', 'two.txt'}
     assert not list((app.state.settings.internal_path / 'uploads').iterdir())
+
+
+def test_zip_directory_budget_is_checked_before_parsing(client):
+    import struct
+    for entries, size in [(10001, 0), (1, 33 * 1024 * 1024)]:
+        fake = struct.pack('<4s4H2IH', b'PK\x05\x06', 0, 0, entries, entries, size, 0, 0)
+        name = f'budget-{entries}.zip'
+        assert put(client, name, fake).status_code == 201
+        assert client.get('/api/archives', params={'path': name}).status_code == 413

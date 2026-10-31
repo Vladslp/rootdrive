@@ -43,17 +43,17 @@ def validate_target(fs, path):
 
 @router.get('')
 def list_uploads(request: Request, user=Depends(require_access)):
-    with request.app.state.db() as db:
+    with request.state.workspace.db() as db:
         jobs = db.scalars(select(UploadJob).where(UploadJob.owner == owner_key(user), UploadJob.status == 'open').order_by(UploadJob.created_at))
         return {'items': [upload_info(job) for job in jobs]}
 
 
 @router.post('', status_code=201)
 def start_upload(body: UploadInput, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     if body.size > fs.settings.max_upload_size_mb * 1024 * 1024:
         raise HTTPException(413, 'File exceeds the configured upload limit')
-    with fs.lock, request.app.state.db() as db:
+    with fs.lock, request.state.workspace.db() as db:
         base = fs.path(body.path)
         if not base.is_dir():
             raise HTTPException(400, 'Destination must be a folder')
@@ -82,7 +82,7 @@ def start_upload(body: UploadInput, request: Request, user=Depends(require_acces
 
 @router.get('/{identifier}')
 def get_upload(identifier: str, request: Request, user=Depends(require_access)):
-    with request.app.state.fs.lock, request.app.state.db() as db:
+    with request.state.workspace.fs.lock, request.state.workspace.db() as db:
         return upload_info(find_job(db, identifier, owner_key(user), active=False))
 
 
@@ -102,8 +102,8 @@ async def append_upload(identifier: str, request: Request, offset: int = Query(g
         raise HTTPException(400, 'Empty upload chunk')
 
     def write_chunk():
-        fs = request.app.state.fs
-        with fs.lock, request.app.state.db() as db:
+        fs = request.state.workspace.fs
+        with fs.lock, request.state.workspace.db() as db:
             job = find_job(db, identifier, owner_key(user))
             if job.size > fs.settings.max_upload_size_mb * 1024 * 1024:
                 raise HTTPException(413, 'File exceeds the current upload limit')
@@ -140,8 +140,8 @@ async def verify_upload(identifier: str, request: Request, user=Depends(require_
     content = await read_bounded(request, 65536)
 
     def verify():
-        fs = request.app.state.fs
-        with fs.lock, request.app.state.db() as db:
+        fs = request.state.workspace.fs
+        with fs.lock, request.state.workspace.db() as db:
             job = find_job(db, identifier, owner_key(user))
             expected_length = min(job.received, 65536)
             if len(content) != expected_length:
@@ -157,8 +157,8 @@ async def verify_upload(identifier: str, request: Request, user=Depends(require_
 
 @router.post('/{identifier}/complete')
 def complete_upload(identifier: str, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         job = find_job(db, identifier, owner_key(user), active=False)
         if job.status == 'completed':
             return fs.entry(fs.path(job.path))
@@ -177,8 +177,8 @@ def complete_upload(identifier: str, request: Request, user=Depends(require_acce
 
 @router.delete('/{identifier}')
 def cancel_upload(identifier: str, request: Request, user=Depends(require_access)):
-    fs = request.app.state.fs
-    with fs.lock, request.app.state.db() as db:
+    fs = request.state.workspace.fs
+    with fs.lock, request.state.workspace.db() as db:
         job = find_job(db, identifier, owner_key(user), active=False)
         if job.status == 'completed':
             raise HTTPException(409, 'Upload already completed')

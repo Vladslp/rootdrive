@@ -80,6 +80,8 @@ def render(fs, value, body):
 
 
 def encode(image, destination, body, exif):
+    if body.strip_metadata:
+        image.info.clear()
     options = {'format': body.format.upper(), 'quality': body.quality}
     if not body.strip_metadata and exif:
         options['exif'] = exif.tobytes()
@@ -96,7 +98,7 @@ def encode(image, destination, body, exif):
 
 @router.post('/preview')
 def export_preview(body: ExportInput, request: Request):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     with processing:
         _, image, exif = render(fs, body.paths[0], body)
         try:
@@ -110,7 +112,7 @@ def export_preview(body: ExportInput, request: Request):
 
 @router.post('/export', status_code=201)
 def export_photos(body: ExportInput, request: Request):
-    fs = request.app.state.fs
+    fs = request.state.workspace.fs
     installed = []
     staged = []
     entries = []

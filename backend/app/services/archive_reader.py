@@ -2,6 +2,7 @@ import mimetypes
 import os
 import shutil
 import stat
+import struct
 import uuid
 import zipfile
 from contextlib import contextmanager
@@ -11,15 +12,46 @@ from .io import open_regular
 from .transfers import publish_directory
 
 
+def check_directory_budget(handle):
+    size = os.fstat(handle.fileno()).st_size
+    tail_size = min(size, 65557)
+    handle.seek(size - tail_size)
+    tail = handle.read(tail_size)
+    start = tail.rfind(b'PK\x05\x06')
+    if start < 0 or start + 22 > len(tail):
+        raise HTTPException(415, 'This ZIP is damaged or unsupported')
+    record = struct.unpack('<4s4H2IH', tail[start:start + 22])
+    _, disk, directory_disk, disk_entries, entries, directory_size, offset, comment = record
+    end_position = size - tail_size + start
+    if start + 22 + comment != len(tail) or disk or directory_disk or disk_entries != entries:
+        raise HTTPException(415, 'Split or ambiguous ZIP archives are unsupported')
+    if entries == 65535 or directory_size == 4294967295 or offset == 4294967295:
+        if end_position < 76:
+            raise HTTPException(415, 'Invalid ZIP64 archive')
+        handle.seek(end_position - 20)
+        locator = struct.unpack('<4sIQI', handle.read(20))
+        if locator[0] != b'PK\x06\x07' or locator[1] or locator[3] != 1 or locator[2] != end_position - 76:
+            raise HTTPException(415, 'Unsupported ZIP64 directory')
+        handle.seek(locator[2])
+        record64 = struct.unpack('<4sQ2H2I4Q', handle.read(56))
+        if record64[0] != b'PK\x06\x06' or record64[1] != 44 or record64[4] or record64[5] or record64[6] != record64[7]:
+            raise HTTPException(415, 'Unsupported ZIP64 directory')
+        entries, directory_size = record64[7:9]
+    if entries > 10000 or directory_size > 32 * 1024 * 1024:
+        raise HTTPException(413, 'The ZIP directory exceeds the safe extraction budget')
+    handle.seek(0)
+
+
 @contextmanager
 def open_archive(fs, value):
     try:
         with open_regular(fs, value) as (path, handle):
             if path.suffix.lower() != '.zip':
                 raise HTTPException(415, 'Choose a ZIP archive')
+            check_directory_budget(handle)
             with zipfile.ZipFile(handle) as archive:
                 yield archive, archive_members(fs, archive)
-    except (zipfile.BadZipFile, RuntimeError, NotImplementedError):
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, struct.error):
         raise HTTPException(415, 'This ZIP is damaged, encrypted or unsupported')
 
 

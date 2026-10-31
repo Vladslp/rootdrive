@@ -22,6 +22,7 @@ import {
   bytes,
   date,
   fileURL,
+  workspaceURL,
   saveURL,
   type Entry,
   type Listing,
@@ -734,7 +735,9 @@ export function PreviewDialog({
   properties,
   edit,
   share,
+  readOnly = false,
 }: {
+  readOnly?: boolean;
   entry: Entry;
   close: () => void;
   properties: () => void;
@@ -744,7 +747,7 @@ export function PreviewDialog({
   const [failed, setFailed] = useState(false);
   const [size, setSize] = useState({ width: 1, height: 1 });
   const kind = kindOf(entry);
-  const url = "/api/files/media?path=" + encodeURIComponent(entry.path);
+  const url = workspaceURL("/api/files/media?path=" + encodeURIComponent(entry.path));
   return (
     <Dialog title={entry.name} close={close} wide>
       <div className={"preview-content " + kind}>
@@ -795,7 +798,7 @@ export function PreviewDialog({
             Share link
           </button>
         )}
-        {canEdit(entry) && (
+        {canEdit(entry) && !readOnly && (
           <button className="button secondary" onClick={edit}>
             <Pencil size={16} />
             Edit
@@ -850,7 +853,7 @@ export function ShareDialog({
   return (
     <Dialog title={entry.type === "folder" ? "Share folder" : "Share file"} close={() => { if (!busy) close(); }}>
       <p className="share-warning">
-        Anyone with the link and its password can download shared files.
+        {password ? "Anyone with the link and password can download shared files." : "Anyone with the link can download shared files."}
       </p>
       <strong className="break-word">{entry.name}</strong>
       {link ? (

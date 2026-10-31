@@ -134,3 +134,9 @@ def test_control_rejects_untrusted_directory(tmp_path, monkeypatch):
     directory.chmod(0o755)
     with pytest.raises(RuntimeError, match='private'):
         control_paths(tmp_path)
+
+
+def test_json_requests_do_not_inherit_large_multipart_upload_budget(client):
+    response = client.post('/api/albums', content=b'{"name":"' + b'x' * (17 * 1024 * 1024) + b'"}', headers={'Content-Type': 'application/json'})
+    assert response.status_code == 413
+    assert client.get('/api/albums').json()['items'] == []
